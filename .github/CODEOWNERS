@@ -1,2 +1,6 @@
-# Preserve the source backend reviewer set during the organization transfer.
-* @onikonychev @AlexSmelov @ruslan-sh-r @cgilbe27 @Unique-Divine @matthiasmatt @mmntk
+* @SaiDotFun/blockchain
+
+# Smart Contracts shares ownership of Solidity, CosmWasm, and EVM precompile code.
+*.sol @SaiDotFun/blockchain @SaiDotFun/smart-contracts
+/wasm-contracts/ @SaiDotFun/blockchain @SaiDotFun/smart-contracts
+/evm/precompile/ @SaiDotFun/blockchain @SaiDotFun/smart-contracts
