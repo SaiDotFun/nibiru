@@ -191,11 +191,10 @@ func (txi *TxIndex) indexEvents(result *abci.TxResult, hash []byte, store dbm.Ba
 // Search performs a search using the given query.
 //
 // It breaks the query into conditions (like "tx.height > 5"). For each
-// condition, it queries the DB index. One special use cases here: (1) if
-// "tx.hash" is found, it returns tx result for it (2) for range queries it is
-// better for the client to provide both lower and upper bounds, so we are not
-// performing a full scan. Results from querying indexes are then intersected
-// and returned to the caller, in no particular order.
+// condition, it queries the DB index. A hash-only query uses direct lookup.
+// Other conditions use the event and height indexes, and any hash condition
+// further restricts their matches. Providing both bounds for a range can
+// reduce the scan. Results are returned in no particular order.
 //
 // Search will exit early and return any result fetched so far,
 // when a message is received on the context chan.
@@ -216,11 +215,14 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		return nil, fmt.Errorf("error during parsing conditions from query: %w", err)
 	}
 
-	// if there is a hash condition, return the result immediately
-	hash, ok, err := lookForHash(conditions)
+	hash, conditions, conflicting, err := extractHashFilter(conditions)
 	if err != nil {
 		return nil, fmt.Errorf("error during searching for a hash in the query: %w", err)
-	} else if ok {
+	}
+	if conflicting {
+		return []*abci.TxResult{}, nil
+	}
+	if hash != nil && len(conditions) == 0 {
 		res, err := txi.Get(hash)
 		switch {
 		case err != nil:
@@ -302,6 +304,14 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 	resultMap := make(map[string]struct{})
 RESULTS_LOOP:
 	for _, h := range filteredHashes {
+		select {
+		case <-ctx.Done():
+			break RESULTS_LOOP
+		default:
+		}
+		if hash != nil && !bytes.Equal(hash, h) {
+			continue
+		}
 
 		res, err := txi.Get(h)
 		if err != nil {
@@ -312,25 +322,32 @@ RESULTS_LOOP:
 			resultMap[hashString] = struct{}{}
 			results = append(results, res)
 		}
-		// Potentially exit early.
-		select {
-		case <-ctx.Done():
-			break RESULTS_LOOP
-		default:
-		}
 	}
 
 	return results, nil
 }
 
-func lookForHash(conditions []query.Condition) (hash []byte, ok bool, err error) {
+func extractHashFilter(conditions []query.Condition) (hash []byte, remaining []query.Condition, conflicting bool, err error) {
+	remaining = conditions[:0]
 	for _, c := range conditions {
-		if c.CompositeKey == types.TxHashKey {
-			decoded, err := hex.DecodeString(c.Operand.(string))
-			return decoded, true, err
+		if c.CompositeKey != types.TxHashKey {
+			remaining = append(remaining, c)
+			continue
 		}
+		value, ok := c.Operand.(string)
+		if c.Op != query.OpEqual || !ok {
+			return nil, nil, false, errors.New("tx.hash requires equality with a quoted hexadecimal hash")
+		}
+		decoded, err := hex.DecodeString(value)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		if hash != nil && !bytes.Equal(hash, decoded) {
+			conflicting = true
+		}
+		hash = decoded
 	}
-	return
+	return hash, remaining, conflicting, nil
 }
 
 func (*TxIndex) setTmpHashes(tmpHeights map[string][]byte, key, value []byte) {

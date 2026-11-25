@@ -225,6 +225,65 @@ func TestTxSearch(t *testing.T) {
 	}
 }
 
+func TestTxSearchHashCompanions(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+	const eventType = "eth.evm.v1.EventEthereumTx"
+	const typedHash = `eth.evm.v1.EventEthereumTx.eth_hash = '"0x1234"'`
+	txResult := txResultWithEvents([]abci.Event{
+		{Type: eventType, Attributes: []abci.EventAttribute{
+			{Key: "eth_hash", Value: `"0x1234"`, Index: true},
+			{Key: "recipient", Value: `"alice"`, Index: true},
+			{Key: "private", Value: "yes", Index: false},
+		}},
+		{Type: eventType, Attributes: []abci.EventAttribute{
+			{Key: "eth_hash", Value: `"0x4321"`, Index: true},
+			{Key: "recipient", Value: `"bob"`, Index: true},
+		}},
+	})
+	require.NoError(t, indexer.Index(txResult))
+	otherTx := txResultWithEvents([]abci.Event{
+		{Type: eventType, Attributes: []abci.EventAttribute{
+			{Key: "eth_hash", Value: `"0x1234"`, Index: true},
+			{Key: "recipient", Value: `"bob"`, Index: true},
+		}},
+	})
+	otherTx.Tx = []byte("different transaction")
+	otherTx.Index++
+	require.NoError(t, indexer.Index(otherTx))
+
+	txHash := types.Tx(txResult.Tx).Hash()
+	hashFilter := fmt.Sprintf("tx.hash = '%X'", txHash)
+	otherHashFilter := fmt.Sprintf("tx.hash = '%X'", types.Tx(otherTx.Tx).Hash())
+	for _, test := range []struct {
+		name  string
+		query string
+		match bool
+	}{
+		{"hash only", hashFilter, true},
+		{"typed attribute equality", hashFilter + " AND " + typedHash, true},
+		{"bare value mismatch", hashFilter + " AND eth.evm.v1.EventEthereumTx.eth_hash = '0x1234'", false},
+		{"indexed attribute exists", hashFilter + " AND eth.evm.v1.EventEthereumTx.eth_hash EXISTS", true},
+		{"unindexed attribute absent from search", hashFilter + " AND eth.evm.v1.EventEthereumTx.private EXISTS", false},
+		{"same event", typedHash + ` AND eth.evm.v1.EventEthereumTx.recipient = '"alice"' AND ` + hashFilter, true},
+		{"different events", typedHash + ` AND eth.evm.v1.EventEthereumTx.recipient = '"bob"' AND ` + hashFilter, false},
+		{"matching height", fmt.Sprintf("%s AND tx.height = %d", hashFilter, txResult.Height), true},
+		{"different height", fmt.Sprintf("%s AND tx.height > %d", hashFilter, txResult.Height), false},
+		{"duplicate hash", fmt.Sprintf("%s AND tx.hash = '%x'", hashFilter, txHash), true},
+		{"different hashes", hashFilter + " AND " + otherHashFilter, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			results, err := indexer.Search(t.Context(), query.MustParse(test.query))
+			require.NoError(t, err)
+			if !test.match {
+				require.Empty(t, results)
+				return
+			}
+			require.Len(t, results, 1)
+			require.True(t, proto.Equal(txResult, results[0]))
+		})
+	}
+}
+
 func TestTxSearchEventMatch(t *testing.T) {
 
 	indexer := NewTxIndex(db.NewMemDB())
