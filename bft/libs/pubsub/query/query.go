@@ -101,7 +101,7 @@ func (q *Query) Conditions() ([]Condition, error) {
 	)
 
 	conditions := make([]Condition, 0)
-	buffer, begin, end := q.parser.Buffer, 0, 0
+	buffer, begin, end := q.parser.buffer, 0, 0
 
 	// tokens must be in the following order: tag ("tx.gas") -> operator ("=") -> operand ("7")
 	for _, token := range q.parser.Tokens() {
@@ -110,7 +110,7 @@ func (q *Query) Conditions() ([]Condition, error) {
 			begin, end = int(token.begin), int(token.end)
 
 		case ruletag:
-			eventAttr = buffer[begin:end]
+			eventAttr = string(buffer[begin:end])
 
 		case rulele:
 			op = OpLessEqual
@@ -136,11 +136,11 @@ func (q *Query) Conditions() ([]Condition, error) {
 
 		case rulevalue:
 			// strip single quotes from value (i.e. "'NewBlock'" -> "NewBlock")
-			valueWithoutSingleQuotes := buffer[begin+1 : end-1]
+			valueWithoutSingleQuotes := string(buffer[begin+1 : end-1])
 			conditions = append(conditions, Condition{eventAttr, op, valueWithoutSingleQuotes})
 
 		case rulenumber:
-			number := buffer[begin:end]
+			number := string(buffer[begin:end])
 			if strings.ContainsAny(number, ".") { // if it looks like a floating-point number
 				value, err := strconv.ParseFloat(number, 64)
 				if err != nil {
@@ -168,11 +168,11 @@ func (q *Query) Conditions() ([]Condition, error) {
 			}
 
 		case ruletime:
-			value, err := time.Parse(TimeLayout, buffer[begin:end])
+			value, err := time.Parse(TimeLayout, string(buffer[begin:end]))
 			if err != nil {
 				err = fmt.Errorf(
 					"got %v while trying to parse %s as time.Time / RFC3339 (should never happen if the grammar is correct)",
-					err, buffer[begin:end],
+					err, string(buffer[begin:end]),
 				)
 				return nil, err
 			}
@@ -180,11 +180,11 @@ func (q *Query) Conditions() ([]Condition, error) {
 			conditions = append(conditions, Condition{eventAttr, op, value})
 
 		case ruledate:
-			value, err := time.Parse("2006-01-02", buffer[begin:end])
+			value, err := time.Parse("2006-01-02", string(buffer[begin:end]))
 			if err != nil {
 				err = fmt.Errorf(
 					"got %v while trying to parse %s as time.Time / '2006-01-02' (should never happen if the grammar is correct)",
-					err, buffer[begin:end],
+					err, string(buffer[begin:end]),
 				)
 				return nil, err
 			}
@@ -213,7 +213,7 @@ func (q *Query) Matches(events map[string][]string) (bool, error) {
 		op        Operator
 	)
 
-	buffer, begin, end := q.parser.Buffer, 0, 0
+	buffer, begin, end := q.parser.buffer, 0, 0
 
 	// tokens must be in the following order:
 
@@ -224,7 +224,7 @@ func (q *Query) Matches(events map[string][]string) (bool, error) {
 			begin, end = int(token.begin), int(token.end)
 
 		case ruletag:
-			eventAttr = buffer[begin:end]
+			eventAttr = string(buffer[begin:end])
 
 		case rulele:
 			op = OpLessEqual
@@ -268,7 +268,7 @@ func (q *Query) Matches(events map[string][]string) (bool, error) {
 
 		case rulevalue:
 			// strip single quotes from value (i.e. "'NewBlock'" -> "NewBlock")
-			valueWithoutSingleQuotes := buffer[begin+1 : end-1]
+			valueWithoutSingleQuotes := string(buffer[begin+1 : end-1])
 
 			// see if the triplet (event attribute, operator, operand) matches any event
 			// "tx.gas", "=", "7", { "tx.gas": 7, "tx.ID": "4AE393495334" }
@@ -282,7 +282,7 @@ func (q *Query) Matches(events map[string][]string) (bool, error) {
 			}
 
 		case rulenumber:
-			number := buffer[begin:end]
+			number := string(buffer[begin:end])
 			if strings.ContainsAny(number, ".") { // if it looks like a floating-point number
 				value, err := strconv.ParseFloat(number, 64)
 				if err != nil {
@@ -324,11 +324,11 @@ func (q *Query) Matches(events map[string][]string) (bool, error) {
 			}
 
 		case ruletime:
-			value, err := time.Parse(TimeLayout, buffer[begin:end])
+			value, err := time.Parse(TimeLayout, string(buffer[begin:end]))
 			if err != nil {
 				err = fmt.Errorf(
 					"got %v while trying to parse %s as time.Time / RFC3339 (should never happen if the grammar is correct)",
-					err, buffer[begin:end],
+					err, string(buffer[begin:end]),
 				)
 				return false, err
 			}
@@ -343,11 +343,11 @@ func (q *Query) Matches(events map[string][]string) (bool, error) {
 			}
 
 		case ruledate:
-			value, err := time.Parse("2006-01-02", buffer[begin:end])
+			value, err := time.Parse("2006-01-02", string(buffer[begin:end]))
 			if err != nil {
 				err = fmt.Errorf(
 					"got %v while trying to parse %s as time.Time / '2006-01-02' (should never happen if the grammar is correct)",
-					err, buffer[begin:end],
+					err, string(buffer[begin:end]),
 				)
 				return false, err
 			}

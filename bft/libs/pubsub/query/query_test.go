@@ -228,6 +228,23 @@ func TestMustParse(t *testing.T) {
 	assert.NotPanics(t, func() { query.MustParse("tm.events.type='NewBlock'") })
 }
 
+func TestUnicodeQueryTokens(t *testing.T) {
+	q := query.MustParse(`typed.event.名前 = '"José"' AND tx.height = 7`)
+	conditions, err := q.Conditions()
+	require.NoError(t, err)
+	require.Equal(t, []query.Condition{
+		{CompositeKey: "typed.event.名前", Op: query.OpEqual, Operand: `"José"`},
+		{CompositeKey: "tx.height", Op: query.OpEqual, Operand: big.NewInt(7)},
+	}, conditions)
+
+	matches, err := q.Matches(map[string][]string{
+		"typed.event.名前": {`"José"`},
+		"tx.height":      {"7"},
+	})
+	require.NoError(t, err)
+	require.True(t, matches)
+}
+
 func TestConditions(t *testing.T) {
 	txTime, err := time.Parse(time.RFC3339, "2013-05-03T14:45:00Z")
 	require.NoError(t, err)
