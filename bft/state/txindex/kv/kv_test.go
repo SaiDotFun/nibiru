@@ -286,6 +286,31 @@ func TestTxSearchHashCompanions(t *testing.T) {
 	}
 }
 
+func TestTxSearchHashWithReindexedTransaction(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+	txResult := txResultWithEvents([]abci.Event{
+		{Type: "sample", Attributes: []abci.EventAttribute{{Key: "name", Value: "old", Index: true}}},
+	})
+	txResult.Height = 5
+	require.NoError(t, indexer.Index(txResult))
+	txResult.Height = 7
+	txResult.Result.Events[0].Attributes[0].Value = "new"
+	require.NoError(t, indexer.Index(txResult))
+
+	hashFilter := fmt.Sprintf("tx.hash = '%X'", types.Tx(txResult.Tx).Hash())
+	for _, condition := range []string{"tx.height=5", "sample.name='old'"} {
+		results, err := indexer.Search(t.Context(), query.MustParse(hashFilter+" AND "+condition))
+		require.NoError(t, err)
+		require.Empty(t, results, condition)
+	}
+	for _, condition := range []string{"tx.height=7", "tx.height>=7", "sample.name='new'"} {
+		results, err := indexer.Search(t.Context(), query.MustParse(hashFilter+" AND "+condition))
+		require.NoError(t, err)
+		require.Len(t, results, 1, condition)
+		require.True(t, proto.Equal(txResult, results[0]), condition)
+	}
+}
+
 func TestTxSearchHeightConjunctions(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 	for _, height := range []int64{1, 5, 10} {

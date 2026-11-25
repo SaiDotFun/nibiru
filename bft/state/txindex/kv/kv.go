@@ -241,6 +241,16 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		return nil, err
 	}
 	heightInfo := HeightInfo{heightRange: heightRange}
+	if hashResult != nil {
+		if !checkHeightConditions(heightInfo, hashResult.Height) {
+			return []*abci.TxResult{}, nil
+		}
+		if len(conditions) == 0 {
+			return []*abci.TxResult{hashResult}, nil
+		}
+		// Only event entries at the known transaction height can match the hash.
+		heightInfo.height = hashResult.Height
+	}
 	lower, _ := heightRange.LowerBound.(*big.Int)
 	upper, _ := heightRange.UpperBound.(*big.Int)
 	exactHeight := false

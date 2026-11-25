@@ -92,7 +92,12 @@ func extractHeightFilter(conditions []query.Condition) ([]query.Condition, index
 
 func checkHeightConditions(heightInfo HeightInfo, keyHeight int64) bool {
 	if heightInfo.height > 0 {
-		return keyHeight == heightInfo.height
+		if keyHeight != heightInfo.height {
+			return false
+		}
+		if heightInfo.heightRange.Key == types.TxHeightKey {
+			return true
+		}
 	}
 	return heightInfo.heightRange.Key == "" || checkBounds(heightInfo.heightRange, big.NewInt(keyHeight))
 }
