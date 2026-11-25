@@ -28,16 +28,15 @@ var Routes = map[string]*rpc.RPCFunc{
 	"header_by_hash":       rpc.NewRPCFunc(HeaderByHash, "hash", rpc.Cacheable()),
 	"check_tx":             rpc.NewRPCFunc(CheckTx, "tx"),
 	"tx":                   rpc.NewRPCFunc(Tx, "hash,prove", rpc.Cacheable()),
-	"tx_search":            rpc.NewRPCFunc(TxSearch, "query,prove,page,per_page,order_by"),
+	"tx_search":            rpc.NewRPCFunc(txSearchRPC, "query,prove,page,per_page,order_by,filter", rpc.NamedOnlyParams(1)),
 	"block_search":         rpc.NewRPCFunc(BlockSearch, "query,page,per_page,order_by"),
+	"event_search":         rpc.NewRPCFunc(EventSearch, "filter,cursor,limit", rpc.NamedOnlyParams(3)),
 	"validators":           rpc.NewRPCFunc(Validators, "height,page,per_page", rpc.Cacheable("height")),
 	"dump_consensus_state": rpc.NewRPCFunc(DumpConsensusState, ""),
 	"consensus_state":      rpc.NewRPCFunc(ConsensusState, ""),
 	"consensus_params":     rpc.NewRPCFunc(ConsensusParams, "height", rpc.Cacheable("height")),
 	"unconfirmed_txs":      rpc.NewRPCFunc(UnconfirmedTxs, "limit"),
 	"num_unconfirmed_txs":  rpc.NewRPCFunc(NumUnconfirmedTxs, ""),
-
-	"tx_search_by_transaction": rpc.NewRPCFunc(TxSearchByTransaction, "query,prove,page,per_page,order_by"),
 
 	// tx broadcast API
 	"broadcast_tx_commit": rpc.NewRPCFunc(BroadcastTxCommit, "tx"),

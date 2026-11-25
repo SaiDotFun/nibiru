@@ -86,8 +86,8 @@ func TestTxSearchHTTP(t *testing.T) {
 	}
 }
 
-func TestTxSearchByTransactionHTTP(t *testing.T) {
-	const method = "tx_search_by_transaction"
+func TestTxSearchStructuredHTTP(t *testing.T) {
+	const method = "tx_search"
 	const typed = `eth.evm.v1.EventEthereumTx.eth_hash = '"0x1234"'`
 	const query = typed + ` AND transfer.amount = '42unibi'`
 	index := kv.NewTxIndex(dbm.NewMemDB())
@@ -103,6 +103,19 @@ func TestTxSearchByTransactionHTTP(t *testing.T) {
 				}},
 				{Type: "transfer", Attributes: []abci.EventAttribute{
 					{Key: "amount", Value: "42unibi", Index: true},
+					{Key: "sender", Value: "Alice", Index: true},
+					{Key: "recipient", Value: "Bob", Index: true},
+				}},
+				{Type: "transfer", Attributes: []abci.EventAttribute{
+					{Key: "sender", Value: "Carol", Index: true},
+					{Key: "recipient", Value: "Dave", Index: true},
+				}},
+				{Type: "example.v1.TypedEvent", Attributes: []abci.EventAttribute{
+					{Key: "text.value", Value: `"L'étoile/東京 \u003c3"`, Index: true},
+				}},
+				{Type: "pending_ethereum_tx", Attributes: []abci.EventAttribute{
+					{Key: "eth_hash", Value: fmt.Sprintf("0x%064x", i+1), Index: true},
+					{Key: "index", Value: "0", Index: true},
 				}},
 			}},
 		}))
@@ -112,10 +125,7 @@ func TestTxSearchByTransactionHTTP(t *testing.T) {
 	SetEnvironment(&Environment{TxIndexer: index})
 	t.Cleanup(func() { SetEnvironment(previous) })
 	mux := http.NewServeMux()
-	rpc.RegisterRPCFuncs(mux, map[string]*rpc.RPCFunc{
-		"tx_search": Routes["tx_search"],
-		method:      Routes[method],
-	}, log.NewNopLogger())
+	rpc.RegisterRPCFuncs(mux, map[string]*rpc.RPCFunc{method: Routes[method]}, log.NewNopLogger())
 
 	post := func(t *testing.T, method string, params any) *http.Request {
 		t.Helper()
@@ -137,19 +147,42 @@ func TestTxSearchByTransactionHTTP(t *testing.T) {
 	encoded, err := json.Marshal(query)
 	require.NoError(t, err)
 	params := url.Values{"query": {string(encoded)}}
+	structured := func(recipient string) map[string]any {
+		return map[string]any{"filter": map[string]any{
+			"min_height": "7", "max_height": "7", "events": []map[string]any{
+				{"type": "example.v1.TypedEvent", "attributes": []map[string]any{
+					{"key": "text.value", "json_string_eq": "L'étoile/東京 <3"},
+				}},
+				{"type": "transfer", "attributes": []map[string]any{
+					{"key": "sender", "eq": "Alice"}, {"key": "recipient", "eq": recipient},
+				}},
+			},
+		}}
+	}
 	for _, test := range []struct {
 		name    string
 		request *http.Request
 		total   int
 		txs     []types.Tx
 	}{
-		{"legacy positional cross-event", post(t, "tx_search", []any{query, false, nil, nil, "asc"}), 0, nil},
-		{"legacy positional single-event", post(t, "tx_search", []any{typed, false, nil, nil, "asc"}), 2, []types.Tx{older, newer}},
-		{"transaction scope positional", post(t, method, []any{query, false, "1", "1", "desc"}), 2, []types.Tx{newer}},
-		{"transaction scope named", post(t, method, map[string]any{
+		{"positional cross-event", post(t, method, []any{"transfer.sender='Alice' AND transfer.recipient='Dave'", false, nil, nil, "asc"}), 2, []types.Tx{older, newer}},
+		{"positional single-event", post(t, method, []any{typed, false, nil, nil, "asc"}), 2, []types.Tx{older, newer}},
+		{"positional paging", post(t, method, []any{query, false, "1", "1", "desc"}), 2, []types.Tx{newer}},
+		{"named paging", post(t, method, map[string]any{
 			"query": query, "page": "2", "per_page": "1", "order_by": "desc",
 		}), 2, []types.Tx{older}},
-		{"transaction scope GET", httptest.NewRequest(http.MethodGet, "/"+method+"?"+params.Encode(), nil), 2, []types.Tx{older, newer}},
+		{"EVM fallback by hash", post(t, method, map[string]any{
+			"query": fmt.Sprintf("pending_ethereum_tx.eth_hash='0x%064x'", 2),
+		}), 1, []types.Tx{newer}},
+		{"EVM fallback by height and index", post(t, method, map[string]any{
+			"query": "tx.height=7 AND pending_ethereum_tx.index=0",
+		}), 1, []types.Tx{older}},
+		{"GET", httptest.NewRequest(http.MethodGet, "/"+method+"?"+params.Encode(), nil), 2, []types.Tx{older, newer}},
+		{"structured filters match across groups", post(t, method, structured("Bob")), 1, []types.Tx{older}},
+		{"structured conditions require the same event", post(t, method, structured("Dave")), 0, nil},
+		{"structured hash lookup", post(t, method, map[string]any{"filter": map[string]any{
+			"hash": fmt.Sprintf("0x%X", newer.Hash()),
+		}}), 1, []types.Tx{newer}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := call(t, test.request)
@@ -173,8 +206,29 @@ func TestTxSearchByTransactionHTTP(t *testing.T) {
 	t.Run("unsupported backend", func(t *testing.T) {
 		// The wrapper exposes exactly the base indexer interface.
 		SetEnvironment(&Environment{TxIndexer: struct{ txindex.TxIndexer }{index}})
-		response := call(t, post(t, method, map[string]string{"query": query}))
+		response := call(t, post(t, method, structured("Bob")))
 		require.NotNil(t, response.Error)
-		require.Equal(t, "transaction-wide event search is not supported by the configured transaction indexer", response.Error.Data)
+		require.Equal(t, "structured transaction search is not supported by the configured transaction indexer", response.Error.Data)
+	})
+
+	t.Run("structured and legacy parameters are mutually exclusive", func(t *testing.T) {
+		params := structured("Bob")
+		params["query"] = query
+		response := call(t, post(t, method, params))
+		require.NotNil(t, response.Error)
+		require.Equal(t, "provide exactly one of query or filter", response.Error.Data)
+	})
+
+	t.Run("structured filter is invalid in positional JSON-RPC", func(t *testing.T) {
+		response := call(t, post(t, method, []any{nil, false, nil, nil, "asc", structured("Bob")["filter"]}))
+		require.NotNil(t, response.Error)
+		require.Equal(t, -32602, response.Error.Code)
+	})
+
+	t.Run("neither query nor filter was supplied", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(`{"jsonrpc":"2.0","method":"tx_search","id":1}`))
+		response := call(t, request)
+		require.NotNil(t, response.Error)
+		require.Equal(t, "provide exactly one of query or filter", response.Error.Data)
 	})
 }

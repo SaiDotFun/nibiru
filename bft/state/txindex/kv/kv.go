@@ -209,6 +209,14 @@ func (txi *TxIndex) SearchByTransaction(ctx context.Context, q *query.Query) ([]
 }
 
 func (txi *TxIndex) search(ctx context.Context, q *query.Query, byTransaction bool) ([]*abci.TxResult, error) {
+	conditions, err := q.Conditions()
+	if err != nil {
+		return nil, fmt.Errorf("error during parsing conditions from query: %w", err)
+	}
+	return txi.searchConditions(ctx, conditions, byTransaction)
+}
+
+func (txi *TxIndex) searchConditions(ctx context.Context, conditions []query.Condition, byTransaction bool) ([]*abci.TxResult, error) {
 	select {
 	case <-ctx.Done():
 		return make([]*abci.TxResult, 0), nil
@@ -218,12 +226,6 @@ func (txi *TxIndex) search(ctx context.Context, q *query.Query, byTransaction bo
 
 	var hashesInitialized bool
 	filteredMatches := make(map[eventMatch]struct{})
-
-	// get a list of conditions (like "tx.height > 5")
-	conditions, err := q.Conditions()
-	if err != nil {
-		return nil, fmt.Errorf("error during parsing conditions from query: %w", err)
-	}
 
 	hash, conditions, conflicting, err := extractHashFilter(conditions)
 	if err != nil {

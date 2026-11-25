@@ -48,15 +48,26 @@ func Ws() Option {
 	}
 }
 
+// NamedOnlyParams makes the last count RPC arguments unavailable to positional calls.
+func NamedOnlyParams(count int) Option {
+	return func(r *RPCFunc) {
+		if count < 0 || count > len(r.argNames) {
+			panic("invalid named-only parameter count")
+		}
+		r.namedOnlyParams = count
+	}
+}
+
 // RPCFunc contains the introspected type information for a function
 type RPCFunc struct {
-	f              reflect.Value          // underlying rpc function
-	args           []reflect.Type         // type of each function arg
-	returns        []reflect.Type         // type of each return arg
-	argNames       []string               // name of each argument
-	cacheable      bool                   // enable cache control
-	ws             bool                   // enable websocket communication
-	noCacheDefArgs map[string]interface{} // a lookup table of args that, if not supplied or are set to default values, cause us to not cache
+	f               reflect.Value          // underlying rpc function
+	args            []reflect.Type         // type of each function arg
+	returns         []reflect.Type         // type of each return arg
+	argNames        []string               // name of each argument
+	namedOnlyParams int                    // number of trailing arguments excluded from positional calls
+	cacheable       bool                   // enable cache control
+	ws              bool                   // enable websocket communication
+	noCacheDefArgs  map[string]interface{} // a lookup table of args that, if not supplied or are set to default values, cause us to not cache
 }
 
 // NewRPCFunc wraps a function for introspection.

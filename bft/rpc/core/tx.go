@@ -2,15 +2,18 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	cmtmath "github.com/NibiruChain/nibiru/v2/bft/libs/math"
 	cmtquery "github.com/NibiruChain/nibiru/v2/bft/libs/pubsub/query"
 	ctypes "github.com/NibiruChain/nibiru/v2/bft/rpc/core/types"
 	rpctypes "github.com/NibiruChain/nibiru/v2/bft/rpc/jsonrpc/types"
+	"github.com/NibiruChain/nibiru/v2/bft/state/txindex/kv"
 	"github.com/NibiruChain/nibiru/v2/bft/state/txindex/null"
 	"github.com/NibiruChain/nibiru/v2/bft/types"
 )
@@ -52,8 +55,8 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	}, nil
 }
 
-// TxSearch searches transaction results for predicates satisfied by the same
-// indexed event occurrence. It returns a page of results and the total count.
+// TxSearch searches transaction results for predicates across indexed events in
+// each transaction. It returns a page of results and the total count.
 // More: https://docs.cometbft.com/v0.37/rpc/#/Info/tx_search
 func TxSearch(
 	ctx *rpctypes.Context,
@@ -62,54 +65,25 @@ func TxSearch(
 	pagePtr, perPagePtr *int,
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
-	return txSearch(ctx, query, prove, pagePtr, perPagePtr, orderBy, false)
+	return txSearchRPC(ctx, &query, prove, pagePtr, perPagePtr, orderBy, nil)
 }
 
-// TxSearchByTransaction searches transaction results across indexed events
-// within each transaction. It returns a page of results and the total count.
-func TxSearchByTransaction(
+func txSearchRPC(
 	ctx *rpctypes.Context,
-	query string,
+	query *string,
 	prove bool,
 	pagePtr, perPagePtr *int,
 	orderBy string,
+	filter *kv.SearchFilter,
 ) (*ctypes.ResultTxSearch, error) {
-	return txSearch(ctx, query, prove, pagePtr, perPagePtr, orderBy, true)
-}
-
-type transactionScopeSearcher interface {
-	SearchByTransaction(context.Context, *cmtquery.Query) ([]*abci.TxResult, error)
-}
-
-func txSearch(
-	ctx *rpctypes.Context,
-	query string,
-	prove bool,
-	pagePtr, perPagePtr *int,
-	orderBy string,
-	transactionScope bool,
-) (*ctypes.ResultTxSearch, error) {
-	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, errors.New("transaction indexing is disabled")
-	} else if len(query) > maxQueryLength {
-		return nil, errors.New("maximum query length exceeded")
+	}
+	if (query == nil) == (filter == nil) {
+		return nil, errors.New("provide exactly one of query or filter")
 	}
 
-	q, err := cmtquery.New(query)
-	if err != nil {
-		return nil, err
-	}
-
-	search := env.TxIndexer.Search
-	if transactionScope {
-		indexer, ok := env.TxIndexer.(transactionScopeSearcher)
-		if !ok {
-			return nil, errors.New("transaction-wide event search is not supported by the configured transaction indexer")
-		}
-		search = indexer.SearchByTransaction
-	}
-	results, err := search(ctx.Context(), q)
+	results, err := matchingTransactions(ctx.Context(), query, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -169,4 +143,39 @@ func txSearch(
 	}
 
 	return &ctypes.ResultTxSearch{Txs: apiResults, TotalCount: totalCount}, nil
+}
+
+func matchingTransactions(ctx context.Context, query *string, filter *kv.SearchFilter) ([]*abci.TxResult, error) {
+	if filter != nil {
+		encoded, err := json.Marshal(filter)
+		if err != nil {
+			return nil, err
+		}
+		if len(encoded) > 16*1024 {
+			return nil, errors.New("maximum structured transaction filter length exceeded")
+		}
+		indexer, ok := env.TxIndexer.(interface {
+			SearchFilter(context.Context, kv.SearchFilter) ([]*abci.TxResult, error)
+		})
+		if !ok {
+			return nil, errors.New("structured transaction search is not supported by the configured transaction indexer")
+		}
+		searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		return indexer.SearchFilter(searchCtx, *filter)
+	}
+
+	if len(*query) > maxQueryLength {
+		return nil, errors.New("maximum query length exceeded")
+	}
+	q, err := cmtquery.New(*query)
+	if err != nil {
+		return nil, err
+	}
+	if indexer, ok := env.TxIndexer.(interface {
+		SearchByTransaction(context.Context, *cmtquery.Query) ([]*abci.TxResult, error)
+	}); ok {
+		return indexer.SearchByTransaction(ctx, q)
+	}
+	return env.TxIndexer.Search(ctx, q)
 }

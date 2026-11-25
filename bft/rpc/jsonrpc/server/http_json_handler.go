@@ -88,7 +88,7 @@ func makeJSONRPCHandler(funcMap map[string]*RPCFunc, logger log.Logger) http.Han
 			}
 			ctx := &types.Context{JSONReq: &request, HTTPReq: r}
 			args := []reflect.Value{reflect.ValueOf(ctx)}
-			if len(request.Params) > 0 {
+			if len(request.Params) > 0 || rpcFunc.namedOnlyParams > 0 {
 				fnArgs, err := jsonParamsToArgs(rpcFunc, request.Params)
 				if err != nil {
 					responses = append(
@@ -170,12 +170,13 @@ func arrayParamsToArgs(
 	params []json.RawMessage,
 	argsOffset int,
 ) ([]reflect.Value, error) {
-	if len(rpcFunc.argNames) != len(params) {
+	names := rpcFunc.argNames[:len(rpcFunc.argNames)-rpcFunc.namedOnlyParams]
+	if len(names) != len(params) {
 		return nil, fmt.Errorf("expected %v parameters (%v), got %v (%v)",
-			len(rpcFunc.argNames), rpcFunc.argNames, len(params), params)
+			len(names), names, len(params), params)
 	}
 
-	values := make([]reflect.Value, len(params))
+	values := make([]reflect.Value, len(rpcFunc.argNames))
 	for i, p := range params {
 		argType := rpcFunc.args[i+argsOffset]
 		val := reflect.New(argType)
@@ -184,6 +185,9 @@ func arrayParamsToArgs(
 			return nil, err
 		}
 		values[i] = val.Elem()
+	}
+	for i := len(params); i < len(values); i++ {
+		values[i] = reflect.Zero(rpcFunc.args[i+argsOffset])
 	}
 	return values, nil
 }
@@ -197,6 +201,10 @@ func arrayParamsToArgs(
 //	rpcFunc.argNames = ["arg"]
 func jsonParamsToArgs(rpcFunc *RPCFunc, raw []byte) ([]reflect.Value, error) {
 	const argsOffset = 1
+
+	if len(raw) == 0 {
+		return mapParamsToArgs(rpcFunc, nil, argsOffset)
+	}
 
 	// TODO: Make more efficient, perhaps by checking the first character for '{' or '['?
 	// First, try to get the map.
