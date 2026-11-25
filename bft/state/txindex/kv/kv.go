@@ -222,47 +222,53 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 	if conflicting {
 		return []*abci.TxResult{}, nil
 	}
-	if hash != nil && len(conditions) == 0 {
-		res, err := txi.Get(hash)
-		switch {
-		case err != nil:
+	var hashResult *abci.TxResult
+	if hash != nil {
+		hashResult, err = txi.Get(hash)
+		if err != nil {
 			return []*abci.TxResult{}, fmt.Errorf("error while retrieving the result: %w", err)
-		case res == nil:
+		}
+		if hashResult == nil {
 			return []*abci.TxResult{}, nil
-		default:
-			return []*abci.TxResult{res}, nil
+		}
+		if len(conditions) == 0 {
+			return []*abci.TxResult{hashResult}, nil
 		}
 	}
 
-	// conditions to skip because they're handled before "everything else"
-	skipIndexes := make([]int, 0)
-	var heightInfo HeightInfo
-
-	// If we are not matching events and tx.height = 3 occurs more than once, the later value will
-	// overwrite the first one.
-	conditions, heightInfo = dedupHeight(conditions)
-
-	if !heightInfo.onlyHeightEq {
-		skipIndexes = append(skipIndexes, heightInfo.heightEqIdx)
+	conditions, heightRange, err := extractHeightFilter(conditions)
+	if err != nil {
+		return nil, err
+	}
+	heightInfo := HeightInfo{heightRange: heightRange}
+	lower, _ := heightRange.LowerBound.(*big.Int)
+	upper, _ := heightRange.UpperBound.(*big.Int)
+	exactHeight := false
+	if lower != nil && upper != nil {
+		switch lower.Cmp(upper) {
+		case 1:
+			return []*abci.TxResult{}, nil
+		case 0:
+			exactHeight = true
+			if lower.IsInt64() {
+				heightInfo.height = lower.Int64()
+			}
+		}
 	}
 
-	// extract ranges
-	// if both upper and lower bounds exist, it's better to get them in order not
-	// no iterate over kvs that are not within range.
-	ranges, rangeIndexes, heightRange := indexer.LookForRangesWithHeight(conditions)
-	heightInfo.heightRange = heightRange
+	// Height bounds narrow event matches. A height-only query uses the height index.
+	ranges, rangeIndexes, otherHeightRange := indexer.LookForRangesWithHeight(conditions)
+	if len(conditions) == 0 && heightRange.Key != "" {
+		if exactHeight {
+			conditions = append(conditions, query.Condition{CompositeKey: types.TxHeightKey, Op: query.OpEqual, Operand: lower})
+		} else {
+			ranges[types.TxHeightKey] = heightRange
+		}
+	} else if heightRange.Key == "" {
+		heightInfo.heightRange = otherHeightRange
+	}
 	if len(ranges) > 0 {
-		skipIndexes = append(skipIndexes, rangeIndexes...)
-
 		for _, qr := range ranges {
-
-			// If we have a query range over height and want to still look for
-			// specific event values we do not want to simply return all
-			// transactios in this height range. We remember the height range info
-			// and pass it on to match() to take into account when processing events.
-			if qr.Key == types.TxHeightKey && !heightInfo.onlyHeightRange {
-				continue
-			}
 			if !hashesInitialized {
 				filteredHashes = txi.matchRange(ctx, qr, startKey(qr.Key), filteredHashes, true, heightInfo)
 				hashesInitialized = true
@@ -278,11 +284,9 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		}
 	}
 
-	// if there is a height condition ("tx.height=3"), extract it
-
-	// for all other conditions
+	// Match the remaining non-range conditions.
 	for i, c := range conditions {
-		if intInSlice(i, skipIndexes) {
+		if intInSlice(i, rangeIndexes) {
 			continue
 		}
 
@@ -309,7 +313,10 @@ RESULTS_LOOP:
 			break RESULTS_LOOP
 		default:
 		}
-		if hash != nil && !bytes.Equal(hash, h) {
+		if hashResult != nil {
+			if bytes.Equal(hash, h) {
+				return []*abci.TxResult{hashResult}, nil
+			}
 			continue
 		}
 

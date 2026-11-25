@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -260,6 +261,7 @@ func TestTxSearchHashCompanions(t *testing.T) {
 		match bool
 	}{
 		{"hash only", hashFilter, true},
+		{"missing hash with event predicate", fmt.Sprintf("tx.hash = '%X' AND %s", types.Tx("missing").Hash(), typedHash), false},
 		{"typed attribute equality", hashFilter + " AND " + typedHash, true},
 		{"bare value mismatch", hashFilter + " AND eth.evm.v1.EventEthereumTx.eth_hash = '0x1234'", false},
 		{"indexed attribute exists", hashFilter + " AND eth.evm.v1.EventEthereumTx.eth_hash EXISTS", true},
@@ -280,6 +282,68 @@ func TestTxSearchHashCompanions(t *testing.T) {
 			}
 			require.Len(t, results, 1)
 			require.True(t, proto.Equal(txResult, results[0]))
+		})
+	}
+}
+
+func TestTxSearchHeightConjunctions(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+	for _, height := range []int64{1, 5, 10} {
+		txResult := txResultWithEvents([]abci.Event{
+			{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
+		})
+		txResult.Height = height
+		txResult.Tx = []byte(fmt.Sprintf("tx at height %d", height))
+		require.NoError(t, indexer.Index(txResult))
+	}
+	hashFilter := fmt.Sprintf("tx.hash = '%X'", types.Tx("tx at height 5").Hash())
+
+	for _, test := range []struct {
+		predicates string
+		heights    []int64
+	}{
+		{"tx.height = 5 AND tx.height = 5", []int64{5}},
+		{"tx.height = 1 AND tx.height = 5", nil},
+		{"tx.height = 5 AND tx.height = 1", nil},
+		{"tx.height = 5 AND tx.height >= 1", []int64{5}},
+		{"tx.height >= 1 AND tx.height = 5", []int64{5}},
+		{"tx.height = 5 AND tx.height > 5", nil},
+		{"tx.height > 5 AND tx.height = 5", nil},
+		{"tx.height = 5 AND tx.height <= 5", []int64{5}},
+		{"tx.height = 5 AND tx.height < 5", nil},
+		{"tx.height > 5 AND tx.height >= 1", []int64{10}},
+		{"tx.height >= 1 AND tx.height > 5", []int64{10}},
+		{"tx.height >= 5 AND tx.height > 5", []int64{10}},
+		{"tx.height > 5 AND tx.height >= 5", []int64{10}},
+		{"tx.height < 5 AND tx.height <= 10", []int64{1}},
+		{"tx.height <= 10 AND tx.height < 5", []int64{1}},
+		{"tx.height <= 5 AND tx.height < 5", []int64{1}},
+		{"tx.height < 5 AND tx.height <= 5", []int64{1}},
+		{"tx.height >= 5 AND tx.height <= 5", []int64{5}},
+		{"tx.height > 5 AND tx.height <= 5", nil},
+	} {
+		t.Run(test.predicates, func(t *testing.T) {
+			for _, companion := range []string{"", " AND account.number = 1", " AND account.number >= 1"} {
+				results, err := indexer.Search(t.Context(), query.MustParse(test.predicates+companion))
+				require.NoError(t, err)
+				var heights []int64
+				for _, result := range results {
+					heights = append(heights, result.Height)
+				}
+				require.ElementsMatch(t, test.heights, heights, companion)
+			}
+
+			results, err := indexer.Search(t.Context(), query.MustParse(hashFilter+" AND "+test.predicates))
+			require.NoError(t, err)
+			var heights []int64
+			for _, result := range results {
+				heights = append(heights, result.Height)
+			}
+			if slices.Contains(test.heights, int64(5)) {
+				require.Equal(t, []int64{5}, heights)
+			} else {
+				require.Empty(t, heights)
+			}
 		})
 	}
 }
@@ -587,16 +651,16 @@ func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
 		},
 		{
 			q:     "account.number >= 1 AND tx.height = 3 AND tx.height > 0",
-			found: true,
+			found: false,
 		},
 		{
 			q:     "account.number >= 1 AND tx.height > 0 AND tx.height = 3",
-			found: true,
+			found: false,
 		},
 
 		{
 			q:     "account.number >= 1 AND tx.height = 1  AND tx.height = 2 AND tx.height = 3",
-			found: true,
+			found: false,
 		},
 
 		{
@@ -638,7 +702,7 @@ func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
 		if tc.found {
 			len = 1
 		}
-		assert.Len(t, results, len)
+		require.Len(t, results, len, tc.q)
 		assert.True(t, !tc.found || proto.Equal(txResult, results[0]))
 
 	}

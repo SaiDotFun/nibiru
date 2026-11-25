@@ -11,11 +11,8 @@ import (
 )
 
 type HeightInfo struct {
-	heightRange     indexer.QueryRange
-	height          int64
-	heightEqIdx     int
-	onlyHeightRange bool
-	onlyHeightEq    bool
+	heightRange indexer.QueryRange
+	height      int64
 }
 
 // IntInSlice returns true if a is found in the list.
@@ -46,57 +43,56 @@ func ParseEventSeqFromEventKey(key []byte) (int64, error) {
 
 	return eventSeq, nil
 }
-func dedupHeight(conditions []query.Condition) (dedupConditions []query.Condition, heightInfo HeightInfo) {
-	heightInfo.heightEqIdx = -1
-	heightRangeExists := false
-	found := false
-	var heightCondition []query.Condition
-	heightInfo.onlyHeightEq = true
-	heightInfo.onlyHeightRange = true
+
+// extractHeightFilter intersects the numeric height predicates before event matching.
+// Height bounds are inclusive because transaction heights are integers.
+func extractHeightFilter(conditions []query.Condition) ([]query.Condition, indexer.QueryRange, error) {
+	remaining := conditions[:0]
+	heightRange := indexer.QueryRange{
+		IncludeLowerBound: true,
+		IncludeUpperBound: true,
+	}
+	var lower, upper *big.Int
 	for _, c := range conditions {
-		if c.CompositeKey == types.TxHeightKey {
-			if c.Op == query.OpEqual {
-				if heightRangeExists || found {
-					continue
-				} else {
-					found = true
-					heightCondition = append(heightCondition, c)
-					heightInfo.height = c.Operand.(*big.Int).Int64() //Height is always int64
-				}
-			} else {
-				heightInfo.onlyHeightEq = false
-				heightRangeExists = true
-				dedupConditions = append(dedupConditions, c)
+		if c.CompositeKey != types.TxHeightKey || (c.Op != query.OpEqual && !indexer.IsRangeOperation(c.Op)) {
+			remaining = append(remaining, c)
+			continue
+		}
+		height, ok := c.Operand.(*big.Int)
+		if !ok {
+			return nil, indexer.QueryRange{}, fmt.Errorf("tx.height requires an integer operand")
+		}
+		heightRange.Key = types.TxHeightKey
+
+		switch c.Op {
+		case query.OpGreater:
+			height = new(big.Int).Add(height, big.NewInt(1))
+		case query.OpLess:
+			height = new(big.Int).Sub(height, big.NewInt(1))
+		}
+		if c.Op == query.OpEqual || c.Op == query.OpGreater || c.Op == query.OpGreaterEqual {
+			if lower == nil || height.Cmp(lower) > 0 {
+				lower = height
 			}
-		} else {
-			heightInfo.onlyHeightRange = false
-			heightInfo.onlyHeightEq = false
-			dedupConditions = append(dedupConditions, c)
+		}
+		if c.Op == query.OpEqual || c.Op == query.OpLess || c.Op == query.OpLessEqual {
+			if upper == nil || height.Cmp(upper) < 0 {
+				upper = height
+			}
 		}
 	}
-	if !heightRangeExists && len(heightCondition) != 0 {
-		heightInfo.heightEqIdx = len(dedupConditions)
-		heightInfo.onlyHeightRange = false
-		dedupConditions = append(dedupConditions, heightCondition...)
-	} else {
-		// If we found a range make sure we set the height idx to -1 as the height equality
-		// will be removed
-		heightInfo.heightEqIdx = -1
-		heightInfo.height = 0
-		heightInfo.onlyHeightEq = false
+	if lower != nil {
+		heightRange.LowerBound = lower
 	}
-	return dedupConditions, heightInfo
+	if upper != nil {
+		heightRange.UpperBound = upper
+	}
+	return remaining, heightRange, nil
 }
 
 func checkHeightConditions(heightInfo HeightInfo, keyHeight int64) bool {
-	if heightInfo.heightRange.Key != "" {
-		if !checkBounds(heightInfo.heightRange, big.NewInt(keyHeight)) {
-			return false
-		}
-	} else {
-		if heightInfo.height != 0 && keyHeight != heightInfo.height {
-			return false
-		}
+	if heightInfo.height > 0 {
+		return keyHeight == heightInfo.height
 	}
-	return true
+	return heightInfo.heightRange.Key == "" || checkBounds(heightInfo.heightRange, big.NewInt(keyHeight))
 }
