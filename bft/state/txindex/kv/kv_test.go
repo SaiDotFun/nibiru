@@ -311,6 +311,36 @@ func TestTxSearchHashWithReindexedTransaction(t *testing.T) {
 	}
 }
 
+func TestTxSearchEventRangeConjunctions(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+	txResult := txResultWithEvents([]abci.Event{
+		{Type: "sample", Attributes: []abci.EventAttribute{{Key: "counter", Value: "9", Index: true}}},
+	})
+	require.NoError(t, indexer.Index(txResult))
+
+	for _, tc := range []struct {
+		first, second string
+		matches       int
+	}{
+		{">10", ">5", 0},
+		{"<8", "<10", 0},
+		{">9", ">=9", 0},
+		{"<9", "<=9", 0},
+		{">=9", "<=9", 1},
+		{">=9", "<9", 0},
+		{">8", "<10", 1},
+	} {
+		for _, pair := range [][2]string{{tc.first, tc.second}, {tc.second, tc.first}} {
+			expr := fmt.Sprintf("sample.counter%s AND sample.counter%s", pair[0], pair[1])
+			t.Run(expr, func(t *testing.T) {
+				results, err := indexer.Search(t.Context(), query.MustParse(expr))
+				require.NoError(t, err)
+				require.Len(t, results, tc.matches)
+			})
+		}
+	}
+}
+
 func TestTxSearchHeightConjunctions(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 	for _, height := range []int64{1, 5, 10} {

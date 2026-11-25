@@ -87,86 +87,56 @@ func (qr QueryRange) UpperBoundValue() interface{} {
 func LookForRangesWithHeight(conditions []query.Condition) (queryRange QueryRanges, indexes []int, heightRange QueryRange) {
 	queryRange = make(QueryRanges)
 	for i, c := range conditions {
-		if IsRangeOperation(c.Op) {
-			heightKey := c.CompositeKey == types.BlockHeightKey || c.CompositeKey == types.TxHeightKey
-			r, ok := queryRange[c.CompositeKey]
-			if !ok {
-				r = QueryRange{Key: c.CompositeKey}
-				if c.CompositeKey == types.BlockHeightKey || c.CompositeKey == types.TxHeightKey {
-					heightRange = QueryRange{Key: c.CompositeKey}
-				}
-			}
-
-			switch c.Op {
-			case query.OpGreater:
-				if heightKey {
-					heightRange.LowerBound = c.Operand
-				}
-				r.LowerBound = c.Operand
-
-			case query.OpGreaterEqual:
-				r.IncludeLowerBound = true
-				r.LowerBound = c.Operand
-				if heightKey {
-					heightRange.IncludeLowerBound = true
-					heightRange.LowerBound = c.Operand
-				}
-
-			case query.OpLess:
-				r.UpperBound = c.Operand
-				if heightKey {
-					heightRange.UpperBound = c.Operand
-				}
-
-			case query.OpLessEqual:
-				r.IncludeUpperBound = true
-				r.UpperBound = c.Operand
-				if heightKey {
-					heightRange.IncludeUpperBound = true
-					heightRange.UpperBound = c.Operand
-				}
-			}
-
-			queryRange[c.CompositeKey] = r
-			indexes = append(indexes, i)
+		if !IsRangeOperation(c.Op) {
+			continue
+		}
+		r := queryRange[c.CompositeKey]
+		r.Key = c.CompositeKey
+		r.addBound(c)
+		queryRange[c.CompositeKey] = r
+		indexes = append(indexes, i)
+		if c.CompositeKey == types.BlockHeightKey || c.CompositeKey == types.TxHeightKey {
+			heightRange = r
 		}
 	}
 
 	return queryRange, indexes, heightRange
 }
 
-// Deprecated: This function is not used anymore and will be replaced with LookForRangesWithHeight
+// Deprecated: Use LookForRangesWithHeight.
 func LookForRanges(conditions []query.Condition) (ranges QueryRanges, indexes []int) {
-	ranges = make(QueryRanges)
-	for i, c := range conditions {
-		if IsRangeOperation(c.Op) {
-			r, ok := ranges[c.CompositeKey]
-			if !ok {
-				r = QueryRange{Key: c.CompositeKey}
-			}
+	ranges, indexes, _ = LookForRangesWithHeight(conditions)
+	return ranges, indexes
+}
 
-			switch c.Op {
-			case query.OpGreater:
-				r.LowerBound = c.Operand
-
-			case query.OpGreaterEqual:
-				r.IncludeLowerBound = true
-				r.LowerBound = c.Operand
-
-			case query.OpLess:
-				r.UpperBound = c.Operand
-
-			case query.OpLessEqual:
-				r.IncludeUpperBound = true
-				r.UpperBound = c.Operand
-			}
-
-			ranges[c.CompositeKey] = r
-			indexes = append(indexes, i)
+// addBound keeps the tightest integer bound in each direction.
+func (qr *QueryRange) addBound(condition query.Condition) {
+	value := condition.Operand
+	switch condition.Op {
+	case query.OpGreater, query.OpGreaterEqual:
+		inclusive := condition.Op == query.OpGreaterEqual
+		order, comparable := compareIntegerBounds(value, qr.LowerBound)
+		if !comparable || order > 0 || (order == 0 && !inclusive) {
+			qr.LowerBound = value
+			qr.IncludeLowerBound = inclusive
+		}
+	case query.OpLess, query.OpLessEqual:
+		inclusive := condition.Op == query.OpLessEqual
+		order, comparable := compareIntegerBounds(value, qr.UpperBound)
+		if !comparable || order < 0 || (order == 0 && !inclusive) {
+			qr.UpperBound = value
+			qr.IncludeUpperBound = inclusive
 		}
 	}
+}
 
-	return ranges, indexes
+func compareIntegerBounds(a, b any) (int, bool) {
+	left, leftOK := a.(*big.Int)
+	right, rightOK := b.(*big.Int)
+	if !leftOK || !rightOK {
+		return 0, false
+	}
+	return left.Cmp(right), true
 }
 
 // IsRangeOperation returns a boolean signifying if a query Operator is a range

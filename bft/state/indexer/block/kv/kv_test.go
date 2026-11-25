@@ -110,6 +110,14 @@ func TestBlockIndexer(t *testing.T) {
 			q:       query.MustParse("begin_event.proposer = 'FCAA001'"),
 			results: []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
 		},
+		"repeated lower bounds": {
+			q:       query.MustParse("end_event.foo >= 100 AND end_event.foo >= 10"),
+			results: []int64{1},
+		},
+		"strict and inclusive upper bounds": {
+			q:       query.MustParse("end_event.foo < 4 AND end_event.foo <= 4"),
+			results: []int64{2},
+		},
 		"end_event.foo <= 5": {
 			q:       query.MustParse("end_event.foo <= 5"),
 			results: []int64{2, 4},
