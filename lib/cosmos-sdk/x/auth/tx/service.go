@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	cmtquery "github.com/NibiruChain/nibiru/v2/bft/libs/pubsub/query"
 	"github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/client"
 	"github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/client/grpc/tmservice"
 	codectypes "github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/codec/types"
@@ -44,13 +45,9 @@ func NewTxServer(clientCtx client.Context, simulate baseAppSimulateFn, interface
 var (
 	_ txtypes.ServiceServer = txServer{}
 
-	// EventRegex checks that an event string is formatted with {alphabetic}.{alphabetic}={value}
-	// Note: in addition to equality, the `>=` and `<=` operators are also valid.
+	// EventRegex matches the legacy event filter format.
+	// Deprecated: Use the BFT query parser for event filters.
 	EventRegex = regexp.MustCompile(`^[a-zA-Z_]+\.[a-zA-Z_]+[<>]?=\S+$`)
-)
-
-const (
-	eventFormat = "{eventType}.{eventAttribute}={value}"
 )
 
 // GetTxsEvent implements the ServiceServer.TxsByEvents RPC method.
@@ -77,8 +74,16 @@ func (s txServer) GetTxsEvent(ctx context.Context, req *txtypes.GetTxsEventReque
 	}
 
 	for _, event := range req.Events {
-		if !EventRegex.Match([]byte(event)) {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid event; event %s should be of the format: %s", event, eventFormat))
+		predicate, err := cmtquery.New(event)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid event filter %q: %v", event, err)
+		}
+		conditions, err := predicate.Conditions()
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid event filter %q: %v", event, err)
+		}
+		if len(conditions) != 1 {
+			return nil, status.Errorf(codes.InvalidArgument, "event filter %q must contain exactly one predicate", event)
 		}
 	}
 
