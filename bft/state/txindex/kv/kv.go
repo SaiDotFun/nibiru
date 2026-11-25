@@ -199,6 +199,16 @@ func (txi *TxIndex) indexEvents(result *abci.TxResult, hash []byte, store dbm.Ba
 // Search will exit early and return any result fetched so far,
 // when a message is received on the context chan.
 func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResult, error) {
+	return txi.search(ctx, q, false)
+}
+
+// SearchByTransaction allows conditions to match different indexed events
+// within the same transaction inclusion.
+func (txi *TxIndex) SearchByTransaction(ctx context.Context, q *query.Query) ([]*abci.TxResult, error) {
+	return txi.search(ctx, q, true)
+}
+
+func (txi *TxIndex) search(ctx context.Context, q *query.Query, byTransaction bool) ([]*abci.TxResult, error) {
 	select {
 	case <-ctx.Done():
 		return make([]*abci.TxResult, 0), nil
@@ -280,7 +290,7 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 	if len(ranges) > 0 {
 		for _, qr := range ranges {
 			if !hashesInitialized {
-				filteredMatches = txi.matchRange(ctx, qr, startKey(qr.Key), filteredMatches, true, heightInfo)
+				filteredMatches = txi.matchRange(ctx, qr, startKey(qr.Key), filteredMatches, true, heightInfo, byTransaction)
 				hashesInitialized = true
 
 				// Ignore any remaining conditions if the first condition resulted
@@ -289,7 +299,7 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 					break
 				}
 			} else {
-				filteredMatches = txi.matchRange(ctx, qr, startKey(qr.Key), filteredMatches, false, heightInfo)
+				filteredMatches = txi.matchRange(ctx, qr, startKey(qr.Key), filteredMatches, false, heightInfo, byTransaction)
 			}
 		}
 	}
@@ -301,7 +311,7 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		}
 
 		if !hashesInitialized {
-			filteredMatches = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredMatches, true, heightInfo)
+			filteredMatches = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredMatches, true, heightInfo, byTransaction)
 			hashesInitialized = true
 
 			// Ignore any remaining conditions if the first condition resulted
@@ -310,7 +320,7 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 				break
 			}
 		} else {
-			filteredMatches = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredMatches, false, heightInfo)
+			filteredMatches = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredMatches, false, heightInfo, byTransaction)
 		}
 	}
 
@@ -388,10 +398,13 @@ func (m eventMatch) matchesReceipt(result *abci.TxResult) bool {
 	return result != nil && m.height == result.Height && m.index == result.Index
 }
 
-func addEventMatch(matches map[eventMatch]struct{}, key, hash []byte, heightInfo HeightInfo) {
+func addEventMatch(matches map[eventMatch]struct{}, key, hash []byte, heightInfo HeightInfo, byTransaction bool) {
 	match, ok := eventMatchFromKey(key)
 	if !ok || !checkHeightConditions(heightInfo, match.height) {
 		return
+	}
+	if byTransaction {
+		match.eventSeq = ""
 	}
 	// The iterator may reuse its buffers on the next iteration.
 	match.hash = string(hash)
@@ -410,6 +423,7 @@ func (txi *TxIndex) match(
 	filteredMatches map[eventMatch]struct{},
 	firstRun bool,
 	heightInfo HeightInfo,
+	byTransaction bool,
 ) map[eventMatch]struct{} {
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
@@ -430,7 +444,7 @@ func (txi *TxIndex) match(
 	EQ_LOOP:
 		for ; it.Valid(); it.Next() {
 
-			addEventMatch(matches, it.Key(), it.Value(), heightInfo)
+			addEventMatch(matches, it.Key(), it.Value(), heightInfo, byTransaction)
 			// Potentially exit early.
 			select {
 			case <-ctx.Done():
@@ -453,7 +467,7 @@ func (txi *TxIndex) match(
 
 	EXISTS_LOOP:
 		for ; it.Valid(); it.Next() {
-			addEventMatch(matches, it.Key(), it.Value(), heightInfo)
+			addEventMatch(matches, it.Key(), it.Value(), heightInfo, byTransaction)
 
 			// Potentially exit early.
 			select {
@@ -483,7 +497,7 @@ func (txi *TxIndex) match(
 			}
 
 			if strings.Contains(extractValueFromKey(it.Key()), c.Operand.(string)) {
-				addEventMatch(matches, it.Key(), it.Value(), heightInfo)
+				addEventMatch(matches, it.Key(), it.Value(), heightInfo, byTransaction)
 			}
 
 			// Potentially exit early.
@@ -542,6 +556,7 @@ func (txi *TxIndex) matchRange(
 	filteredMatches map[eventMatch]struct{},
 	firstRun bool,
 	heightInfo HeightInfo,
+	byTransaction bool,
 ) map[eventMatch]struct{} {
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
@@ -575,7 +590,7 @@ LOOP:
 				continue LOOP
 			}
 			if checkBounds(qr, v) {
-				addEventMatch(matches, key, it.Value(), heightInfo)
+				addEventMatch(matches, key, it.Value(), heightInfo, byTransaction)
 			}
 
 			// XXX: passing time in a ABCI Events is not yet implemented

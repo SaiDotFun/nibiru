@@ -1,10 +1,12 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
 
+	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	cmtmath "github.com/NibiruChain/nibiru/v2/bft/libs/math"
 	cmtquery "github.com/NibiruChain/nibiru/v2/bft/libs/pubsub/query"
 	ctypes "github.com/NibiruChain/nibiru/v2/bft/rpc/core/types"
@@ -50,8 +52,8 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	}, nil
 }
 
-// TxSearch allows you to query for multiple transactions results. It returns a
-// list of transactions (maximum ?per_page entries) and the total count.
+// TxSearch searches transaction results for predicates satisfied by the same
+// indexed event occurrence. It returns a page of results and the total count.
 // More: https://docs.cometbft.com/v0.37/rpc/#/Info/tx_search
 func TxSearch(
 	ctx *rpctypes.Context,
@@ -59,6 +61,33 @@ func TxSearch(
 	prove bool,
 	pagePtr, perPagePtr *int,
 	orderBy string,
+) (*ctypes.ResultTxSearch, error) {
+	return txSearch(ctx, query, prove, pagePtr, perPagePtr, orderBy, false)
+}
+
+// TxSearchByTransaction searches transaction results across indexed events
+// within each transaction. It returns a page of results and the total count.
+func TxSearchByTransaction(
+	ctx *rpctypes.Context,
+	query string,
+	prove bool,
+	pagePtr, perPagePtr *int,
+	orderBy string,
+) (*ctypes.ResultTxSearch, error) {
+	return txSearch(ctx, query, prove, pagePtr, perPagePtr, orderBy, true)
+}
+
+type transactionScopeSearcher interface {
+	SearchByTransaction(context.Context, *cmtquery.Query) ([]*abci.TxResult, error)
+}
+
+func txSearch(
+	ctx *rpctypes.Context,
+	query string,
+	prove bool,
+	pagePtr, perPagePtr *int,
+	orderBy string,
+	transactionScope bool,
 ) (*ctypes.ResultTxSearch, error) {
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
@@ -72,7 +101,15 @@ func TxSearch(
 		return nil, err
 	}
 
-	results, err := env.TxIndexer.Search(ctx.Context(), q)
+	search := env.TxIndexer.Search
+	if transactionScope {
+		indexer, ok := env.TxIndexer.(transactionScopeSearcher)
+		if !ok {
+			return nil, errors.New("transaction-wide event search is not supported by the configured transaction indexer")
+		}
+		search = indexer.SearchByTransaction
+	}
+	results, err := search(ctx.Context(), q)
 	if err != nil {
 		return nil, err
 	}

@@ -37,6 +37,8 @@ var Routes = map[string]*rpc.RPCFunc{
 	"unconfirmed_txs":      rpc.NewRPCFunc(UnconfirmedTxs, "limit"),
 	"num_unconfirmed_txs":  rpc.NewRPCFunc(NumUnconfirmedTxs, ""),
 
+	"tx_search_by_transaction": rpc.NewRPCFunc(TxSearchByTransaction, "query,prove,page,per_page,order_by"),
+
 	// tx broadcast API
 	"broadcast_tx_commit": rpc.NewRPCFunc(BroadcastTxCommit, "tx"),
 	"broadcast_tx_sync":   rpc.NewRPCFunc(BroadcastTxSync, "tx"),
