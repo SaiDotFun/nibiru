@@ -247,6 +247,13 @@ func TestConditions(t *testing.T) {
 			},
 		},
 		{
+			s: `eth.evm.v1.EventEthereumTx.eth_hash = '"0x1234"' AND tx.height = 7`,
+			conditions: []query.Condition{
+				{CompositeKey: "eth.evm.v1.EventEthereumTx.eth_hash", Op: query.OpEqual, Operand: `"0x1234"`},
+				{CompositeKey: "tx.height", Op: query.OpEqual, Operand: big.NewInt(7)},
+			},
+		},
+		{
 			s: "tx.gas > 7 AND tx.gas < 9",
 			conditions: []query.Condition{
 				{CompositeKey: "tx.gas", Op: query.OpGreater, Operand: big.NewInt(7)},
