@@ -101,6 +101,41 @@ func TestBlockEvents(t *testing.T) {
 func TestTxEventsSentWithBroadcastTxAsync(t *testing.T) { testTxEventsSent(t, "async") }
 func TestTxEventsSentWithBroadcastTxSync(t *testing.T)  { testTxEventsSent(t, "sync") }
 
+func TestSubscribeWithZeroPrefixedDecimal(t *testing.T) {
+	for _, c := range GetClients() {
+		t.Run(reflect.TypeOf(c).String(), func(t *testing.T) {
+			if !c.IsRunning() {
+				require.NoError(t, c.Start())
+				t.Cleanup(func() { assert.NoError(t, c.Stop()) })
+			}
+
+			key, _, tx := MakeTxKV()
+			query := fmt.Sprintf("tm.event = 'Tx' AND tx.height >= 0.5 AND app.key = '%s'", key)
+			ctx, cancel := context.WithTimeout(context.Background(), waitForEventTimeout)
+			defer cancel()
+			const subscriber = "TestSubscribeWithZeroPrefixedDecimal"
+			events, err := c.Subscribe(ctx, subscriber, query)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, c.Unsubscribe(context.Background(), subscriber, query))
+			})
+
+			result, err := c.BroadcastTxSync(ctx, tx)
+			require.NoError(t, err)
+			require.Equal(t, abci.CodeTypeOK, result.Code)
+
+			select {
+			case event := <-events:
+				txEvent, ok := event.Data.(types.EventDataTx)
+				require.True(t, ok)
+				require.EqualValues(t, tx, txEvent.Tx)
+			case <-ctx.Done():
+				t.Fatal("timed out waiting for the transaction event")
+			}
+		})
+	}
+}
+
 func testTxEventsSent(t *testing.T, broadcastMethod string) {
 	for _, c := range GetClients() {
 		c := c

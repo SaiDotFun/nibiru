@@ -95,6 +95,16 @@ const (
 // Conditions returns a list of conditions. It returns an error if there is any
 // error with the provided grammar in the Query.
 func (q *Query) Conditions() ([]Condition, error) {
+	return q.conditions(false)
+}
+
+// ConditionsWithExactDecimals returns the conditions with decimal operands as
+// *big.Rat values. The other operand types match Conditions.
+func (q *Query) ConditionsWithExactDecimals() ([]Condition, error) {
+	return q.conditions(true)
+}
+
+func (q *Query) conditions(exactDecimals bool) ([]Condition, error) {
 	var (
 		eventAttr string
 		op        Operator
@@ -142,6 +152,15 @@ func (q *Query) Conditions() ([]Condition, error) {
 		case rulenumber:
 			number := string(buffer[begin:end])
 			if strings.ContainsAny(number, ".") { // if it looks like a floating-point number
+				if exactDecimals {
+					value, ok := new(big.Rat).SetString(number)
+					if !ok {
+						return nil, fmt.Errorf("cannot parse decimal operand %q", number)
+					}
+					conditions = append(conditions, Condition{eventAttr, op, value})
+					continue
+				}
+
 				value, err := strconv.ParseFloat(number, 64)
 				if err != nil {
 					err = fmt.Errorf(

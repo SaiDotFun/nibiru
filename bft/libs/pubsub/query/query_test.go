@@ -316,3 +316,20 @@ func TestConditions(t *testing.T) {
 		assert.Equal(t, tc.conditions, c)
 	}
 }
+
+func TestConditionsWithExactDecimals(t *testing.T) {
+	q := query.MustParse(`account.balance > 0.10000000000000000001 AND tx.height = 7`)
+	decimal, ok := new(big.Rat).SetString("0.10000000000000000001")
+	require.True(t, ok)
+
+	conditions, err := q.ConditionsWithExactDecimals()
+	require.NoError(t, err)
+	require.Equal(t, []query.Condition{
+		{CompositeKey: "account.balance", Op: query.OpGreater, Operand: decimal},
+		{CompositeKey: "tx.height", Op: query.OpEqual, Operand: big.NewInt(7)},
+	}, conditions)
+
+	conditions, err = q.Conditions()
+	require.NoError(t, err)
+	require.Equal(t, float64(0.1), conditions[0].Operand)
+}

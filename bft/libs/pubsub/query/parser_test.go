@@ -72,6 +72,11 @@ func TestParser(t *testing.T) {
 		{"tx.date >= TIME 2013+05=03T14:45:00Z", false},
 
 		{"account.balance=100", true},
+		{"account.balance >= 0", true},
+		{"account.balance >= 0.0", true},
+		{"account.balance >= 0.5", true},
+		{"account.balance >= 10.5", true},
+		{"account.balance >= 00.5", false},
 		{"account.balance >= 200", true},
 		{"account.balance >= -300", false},
 		{"account.balance >>= 400", false},

@@ -1153,7 +1153,7 @@ func (p *QueryParser) Init(options ...func(*QueryParser) error) error {
 			position, tokenIndex = position85, tokenIndex85
 			return false
 		},
-		/* 4 number <- <<('0' / ([1-9] digit* ('.' digit*)?))>> */
+		/* 4 number <- <<(('0' / ([1-9] digit*)) ('.' digit*)?)>> */
 		func() bool {
 			position91, tokenIndex91 := position, tokenIndex
 			{
@@ -1183,29 +1183,29 @@ func (p *QueryParser) Init(options ...func(*QueryParser) error) error {
 						l97:
 							position, tokenIndex = position97, tokenIndex97
 						}
-						{
-							position98, tokenIndex98 := position, tokenIndex
-							if buffer[position] != rune('.') {
-								goto l98
-							}
-							position++
-						l100:
-							{
-								position101, tokenIndex101 := position, tokenIndex
-								if !_rules[ruledigit]() {
-									goto l101
-								}
-								goto l100
-							l101:
-								position, tokenIndex = position101, tokenIndex101
-							}
-							goto l99
-						l98:
-							position, tokenIndex = position98, tokenIndex98
-						}
-					l99:
 					}
 				l94:
+					{
+						position98, tokenIndex98 := position, tokenIndex
+						if buffer[position] != rune('.') {
+							goto l98
+						}
+						position++
+					l100:
+						{
+							position101, tokenIndex101 := position, tokenIndex
+							if !_rules[ruledigit]() {
+								goto l101
+							}
+							goto l100
+						l101:
+							position, tokenIndex = position101, tokenIndex101
+						}
+						goto l99
+					l98:
+						position, tokenIndex = position98, tokenIndex98
+					}
+				l99:
 					add(rulePegText, position93)
 				}
 				add(rulenumber, position92)
