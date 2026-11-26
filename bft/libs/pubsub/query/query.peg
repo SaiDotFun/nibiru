@@ -18,7 +18,7 @@ tag <- < (![ \t\n\r\\()"'=><] .)+ >
 value <- < '\'' (!'\'' .)* '\''>
 number <- < ('0' / [1-9] digit*) ('.' digit*)? >
 digit <- [0-9]
-time <- "TIME " < year '-' month '-' day 'T' digit digit ':' digit digit ':' digit digit (('-' / '+') digit digit ':' digit digit / 'Z') >
+time <- "TIME " < year '-' month '-' day 'T' digit digit ':' digit digit ':' digit digit ('.' digit+)? (('-' / '+') digit digit ':' digit digit / 'Z') >
 date <- "DATE " < year '-' month '-' day >
 year <- ('1' / '2') digit digit digit
 month <- ('0' / '1') digit

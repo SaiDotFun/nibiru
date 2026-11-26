@@ -1231,7 +1231,7 @@ func (p *QueryParser) Init(options ...func(*QueryParser) error) error {
 			position, tokenIndex = position102, tokenIndex102
 			return false
 		},
-		/* 6 time <- <(('t' / 'T') ('i' / 'I') ('m' / 'M') ('e' / 'E') ' ' <(year '-' month '-' day 'T' digit digit ':' digit digit ':' digit digit ((('-' / '+') digit digit ':' digit digit) / 'Z'))>)> */
+		/* 6 time <- <(('t' / 'T') ('i' / 'I') ('m' / 'M') ('e' / 'E') ' ' <(year '-' month '-' day 'T' digit digit ':' digit digit ':' digit digit ('.' digit+)? ((('-' / '+') digit digit ':' digit digit) / 'Z'))>)> */
 		func() bool {
 			position104, tokenIndex104 := position, tokenIndex
 			{
@@ -1351,46 +1351,70 @@ func (p *QueryParser) Init(options ...func(*QueryParser) error) error {
 					}
 					{
 						position115, tokenIndex115 := position, tokenIndex
-						{
-							position117, tokenIndex117 := position, tokenIndex
-							if buffer[position] != rune('-') {
-								goto l118
-							}
-							position++
-							goto l117
-						l118:
-							position, tokenIndex = position117, tokenIndex117
-							if buffer[position] != rune('+') {
-								goto l116
-							}
-							position++
-						}
-					l117:
-						if !_rules[ruledigit]() {
-							goto l116
-						}
-						if !_rules[ruledigit]() {
-							goto l116
-						}
-						if buffer[position] != rune(':') {
-							goto l116
+						if buffer[position] != rune('.') {
+							goto l115
 						}
 						position++
 						if !_rules[ruledigit]() {
-							goto l116
+							goto l115
+						}
+					l117:
+						{
+							position118, tokenIndex118 := position, tokenIndex
+							if !_rules[ruledigit]() {
+								goto l118
+							}
+							goto l117
+						l118:
+							position, tokenIndex = position118, tokenIndex118
+						}
+						goto l116
+					l115:
+						position, tokenIndex = position115, tokenIndex115
+					}
+				l116:
+					{
+						position119, tokenIndex119 := position, tokenIndex
+						{
+							position121, tokenIndex121 := position, tokenIndex
+							if buffer[position] != rune('-') {
+								goto l122
+							}
+							position++
+							goto l121
+						l122:
+							position, tokenIndex = position121, tokenIndex121
+							if buffer[position] != rune('+') {
+								goto l120
+							}
+							position++
+						}
+					l121:
+						if !_rules[ruledigit]() {
+							goto l120
 						}
 						if !_rules[ruledigit]() {
-							goto l116
+							goto l120
 						}
-						goto l115
-					l116:
-						position, tokenIndex = position115, tokenIndex115
+						if buffer[position] != rune(':') {
+							goto l120
+						}
+						position++
+						if !_rules[ruledigit]() {
+							goto l120
+						}
+						if !_rules[ruledigit]() {
+							goto l120
+						}
+						goto l119
+					l120:
+						position, tokenIndex = position119, tokenIndex119
 						if buffer[position] != rune('Z') {
 							goto l104
 						}
 						position++
 					}
-				l115:
+				l119:
 					add(rulePegText, position114)
 				}
 				add(ruletime, position105)
@@ -1402,152 +1426,116 @@ func (p *QueryParser) Init(options ...func(*QueryParser) error) error {
 		},
 		/* 7 date <- <(('d' / 'D') ('a' / 'A') ('t' / 'T') ('e' / 'E') ' ' <(year '-' month '-' day)>)> */
 		func() bool {
-			position119, tokenIndex119 := position, tokenIndex
+			position123, tokenIndex123 := position, tokenIndex
 			{
-				position120 := position
-				{
-					position121, tokenIndex121 := position, tokenIndex
-					if buffer[position] != rune('d') {
-						goto l122
-					}
-					position++
-					goto l121
-				l122:
-					position, tokenIndex = position121, tokenIndex121
-					if buffer[position] != rune('D') {
-						goto l119
-					}
-					position++
-				}
-			l121:
-				{
-					position123, tokenIndex123 := position, tokenIndex
-					if buffer[position] != rune('a') {
-						goto l124
-					}
-					position++
-					goto l123
-				l124:
-					position, tokenIndex = position123, tokenIndex123
-					if buffer[position] != rune('A') {
-						goto l119
-					}
-					position++
-				}
-			l123:
+				position124 := position
 				{
 					position125, tokenIndex125 := position, tokenIndex
-					if buffer[position] != rune('t') {
+					if buffer[position] != rune('d') {
 						goto l126
 					}
 					position++
 					goto l125
 				l126:
 					position, tokenIndex = position125, tokenIndex125
-					if buffer[position] != rune('T') {
-						goto l119
+					if buffer[position] != rune('D') {
+						goto l123
 					}
 					position++
 				}
 			l125:
 				{
 					position127, tokenIndex127 := position, tokenIndex
-					if buffer[position] != rune('e') {
+					if buffer[position] != rune('a') {
 						goto l128
 					}
 					position++
 					goto l127
 				l128:
 					position, tokenIndex = position127, tokenIndex127
-					if buffer[position] != rune('E') {
-						goto l119
+					if buffer[position] != rune('A') {
+						goto l123
 					}
 					position++
 				}
 			l127:
-				if buffer[position] != rune(' ') {
-					goto l119
-				}
-				position++
 				{
-					position129 := position
-					if !_rules[ruleyear]() {
-						goto l119
-					}
-					if buffer[position] != rune('-') {
-						goto l119
-					}
-					position++
-					if !_rules[rulemonth]() {
-						goto l119
-					}
-					if buffer[position] != rune('-') {
-						goto l119
-					}
-					position++
-					if !_rules[ruleday]() {
-						goto l119
-					}
-					add(rulePegText, position129)
-				}
-				add(ruledate, position120)
-			}
-			return true
-		l119:
-			position, tokenIndex = position119, tokenIndex119
-			return false
-		},
-		/* 8 year <- <(('1' / '2') digit digit digit)> */
-		func() bool {
-			position130, tokenIndex130 := position, tokenIndex
-			{
-				position131 := position
-				{
-					position132, tokenIndex132 := position, tokenIndex
-					if buffer[position] != rune('1') {
-						goto l133
-					}
-					position++
-					goto l132
-				l133:
-					position, tokenIndex = position132, tokenIndex132
-					if buffer[position] != rune('2') {
+					position129, tokenIndex129 := position, tokenIndex
+					if buffer[position] != rune('t') {
 						goto l130
 					}
 					position++
+					goto l129
+				l130:
+					position, tokenIndex = position129, tokenIndex129
+					if buffer[position] != rune('T') {
+						goto l123
+					}
+					position++
 				}
-			l132:
-				if !_rules[ruledigit]() {
-					goto l130
+			l129:
+				{
+					position131, tokenIndex131 := position, tokenIndex
+					if buffer[position] != rune('e') {
+						goto l132
+					}
+					position++
+					goto l131
+				l132:
+					position, tokenIndex = position131, tokenIndex131
+					if buffer[position] != rune('E') {
+						goto l123
+					}
+					position++
 				}
-				if !_rules[ruledigit]() {
-					goto l130
+			l131:
+				if buffer[position] != rune(' ') {
+					goto l123
 				}
-				if !_rules[ruledigit]() {
-					goto l130
+				position++
+				{
+					position133 := position
+					if !_rules[ruleyear]() {
+						goto l123
+					}
+					if buffer[position] != rune('-') {
+						goto l123
+					}
+					position++
+					if !_rules[rulemonth]() {
+						goto l123
+					}
+					if buffer[position] != rune('-') {
+						goto l123
+					}
+					position++
+					if !_rules[ruleday]() {
+						goto l123
+					}
+					add(rulePegText, position133)
 				}
-				add(ruleyear, position131)
+				add(ruledate, position124)
 			}
 			return true
-		l130:
-			position, tokenIndex = position130, tokenIndex130
+		l123:
+			position, tokenIndex = position123, tokenIndex123
 			return false
 		},
-		/* 9 month <- <(('0' / '1') digit)> */
+		/* 8 year <- <(('1' / '2') digit digit digit)> */
 		func() bool {
 			position134, tokenIndex134 := position, tokenIndex
 			{
 				position135 := position
 				{
 					position136, tokenIndex136 := position, tokenIndex
-					if buffer[position] != rune('0') {
+					if buffer[position] != rune('1') {
 						goto l137
 					}
 					position++
 					goto l136
 				l137:
 					position, tokenIndex = position136, tokenIndex136
-					if buffer[position] != rune('1') {
+					if buffer[position] != rune('2') {
 						goto l134
 					}
 					position++
@@ -1556,51 +1544,87 @@ func (p *QueryParser) Init(options ...func(*QueryParser) error) error {
 				if !_rules[ruledigit]() {
 					goto l134
 				}
-				add(rulemonth, position135)
+				if !_rules[ruledigit]() {
+					goto l134
+				}
+				if !_rules[ruledigit]() {
+					goto l134
+				}
+				add(ruleyear, position135)
 			}
 			return true
 		l134:
 			position, tokenIndex = position134, tokenIndex134
 			return false
 		},
-		/* 10 day <- <(((&('3') '3') | (&('2') '2') | (&('1') '1') | (&('0') '0')) digit)> */
+		/* 9 month <- <(('0' / '1') digit)> */
 		func() bool {
 			position138, tokenIndex138 := position, tokenIndex
 			{
 				position139 := position
 				{
+					position140, tokenIndex140 := position, tokenIndex
+					if buffer[position] != rune('0') {
+						goto l141
+					}
+					position++
+					goto l140
+				l141:
+					position, tokenIndex = position140, tokenIndex140
+					if buffer[position] != rune('1') {
+						goto l138
+					}
+					position++
+				}
+			l140:
+				if !_rules[ruledigit]() {
+					goto l138
+				}
+				add(rulemonth, position139)
+			}
+			return true
+		l138:
+			position, tokenIndex = position138, tokenIndex138
+			return false
+		},
+		/* 10 day <- <(((&('3') '3') | (&('2') '2') | (&('1') '1') | (&('0') '0')) digit)> */
+		func() bool {
+			position142, tokenIndex142 := position, tokenIndex
+			{
+				position143 := position
+				{
 					switch buffer[position] {
 					case '3':
 						if buffer[position] != rune('3') {
-							goto l138
+							goto l142
 						}
 						position++
 					case '2':
 						if buffer[position] != rune('2') {
-							goto l138
+							goto l142
 						}
 						position++
 					case '1':
 						if buffer[position] != rune('1') {
-							goto l138
+							goto l142
 						}
 						position++
 					default:
 						if buffer[position] != rune('0') {
-							goto l138
+							goto l142
 						}
 						position++
 					}
 				}
 
 				if !_rules[ruledigit]() {
-					goto l138
+					goto l142
 				}
-				add(ruleday, position139)
+				add(ruleday, position143)
 			}
 			return true
-		l138:
-			position, tokenIndex = position138, tokenIndex138
+		l142:
+			position, tokenIndex = position142, tokenIndex142
 			return false
 		},
 		/* 11 and <- <(('a' / 'A') ('n' / 'N') ('d' / 'D'))> */
