@@ -96,6 +96,11 @@ gen-proto-rs:
 gen-proto-openapi:
     bun run proto/buf-gen-swagger.ts 2>&1 | tee out.txt
 
+# Check that Nibiru-owned event producers emit unique attribute keys.
+check-event-keys:
+    go test -mod=readonly ./internal/analysis/eventkeys
+    go run -mod=readonly ./contrib/scripts/eventkeys -test=false ./app/... ./evm/... ./x/... ./lib/cosmos-sdk/x/bank/types
+
 # Run Go linting with golangci-lint.
 go-lint:
     #!/usr/bin/env bash
