@@ -30,7 +30,7 @@ var Routes = map[string]*rpc.RPCFunc{
 	"tx":                   rpc.NewRPCFunc(Tx, "hash,prove", rpc.Cacheable()),
 	"tx_search":            rpc.NewRPCFunc(txSearchRPC, "query,prove,page,per_page,order_by,filter", rpc.NamedOnlyParams(1)),
 	"block_search":         rpc.NewRPCFunc(BlockSearch, "query,page,per_page,order_by"),
-	"event_search":         rpc.NewRPCFunc(EventSearch, "filter,cursor,limit", rpc.NamedOnlyParams(3)),
+	"event_search":         rpc.NewRPCFunc(eventSearchRPC, "filter,cursor,limit,event_format", rpc.NamedOnlyParams(4)),
 	"validators":           rpc.NewRPCFunc(Validators, "height,page,per_page", rpc.Cacheable("height")),
 	"dump_consensus_state": rpc.NewRPCFunc(DumpConsensusState, ""),
 	"consensus_state":      rpc.NewRPCFunc(ConsensusState, ""),

@@ -17,7 +17,6 @@ import (
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/validator"
 
-	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	coretypes "github.com/NibiruChain/nibiru/v2/bft/rpc/core/types"
 	rpcclient "github.com/NibiruChain/nibiru/v2/bft/rpc/jsonrpc/client"
 	"github.com/NibiruChain/nibiru/v2/bft/state/eventsearch"
@@ -445,7 +444,7 @@ func querySearchTransactions(ctx context.Context, rpc rpcclient.Caller, where []
 		}
 		events := make([]map[string]any, 0, len(tx.TxResult.Events))
 		for _, event := range tx.TxResult.Events {
-			attributes := searchEventAttributes(event.Attributes)
+			attributes := eventsearch.AttributeObject(event.Attributes)
 			events = append(events, map[string]any{
 				"type": event.Type, "attributes": attributes,
 				"event": map[string]map[string]string{event.Type: attributes},
@@ -493,7 +492,7 @@ func querySearchEvents(ctx context.Context, rpc rpcclient.Caller, where []byte, 
 		if event.TxHash != "" {
 			hash = event.TxHash
 		}
-		attributes := searchEventAttributes(event.Attributes)
+		attributes := eventsearch.AttributeObject(event.Attributes)
 		nodes = append(nodes, map[string]any{
 			"height": event.Height, "phase": strings.ToUpper(event.Phase), "txIndex": event.TxIndex,
 			"txHash": hash, "eventIndex": event.EventIndex, "type": event.Type,
@@ -523,14 +522,4 @@ func copySearchIntParam(params, args map[string]any, argument, parameter string)
 	}
 	params[parameter] = int(number)
 	return nil
-}
-
-func searchEventAttributes(attrs []abci.EventAttribute) map[string]string {
-	result := make(map[string]string, len(attrs))
-	for _, attr := range attrs {
-		if _, exists := result[attr.Key]; !exists {
-			result[attr.Key] = attr.Value
-		}
-	}
-	return result
 }

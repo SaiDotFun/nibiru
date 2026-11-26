@@ -60,10 +60,18 @@ new builds. Activate via a coordinated chain upgrade because a contract
 that reads repeated reply attributes can change its state or return a
 different result. [WasmVM layout][wasmvm] · [CosmWasm event type][std]
 
-ABCI event attributes remain an ordered list. The event search CLI's compact
-object shows the first stored value for a repeated key. That projection does
-not change what the node stores or what a contract receives. Historical
-records can still carry repeated keys. [Search command][search]
+ABCI event attributes remain an ordered list. The event search CLI and the
+`event_search` RPC object format show the first stored value for a repeated
+historical key. The `event_search` filters can still match any stored value.
+The projection leaves stored attributes and cursors intact. [Search command][search]
+
+To request the compact RPC response, send `event_format: "object"` as a
+named parameter alongside `filter`. Each result row keeps its position and
+transaction metadata and carries an `event` object, for example
+`{"transfer":{"sender":"alice","recipient":"bob"}}`. Omit `event_format`
+or set it to `"list"` to receive the event type and complete ordered
+attribute list, including index flags. Older nodes may ignore the parameter
+and return the list shape. [RPC handler][rpc]
 
 [pr]: https://github.com/SaiDotFun/nibiru/pull/2972
 [sdk]: ../lib/cosmos-sdk/types/events.go
@@ -75,3 +83,4 @@ records can still carry repeated keys. [Search command][search]
 [wasmvm]: ../lib/wasmvm/README.md
 [std]: https://github.com/CosmWasm/cosmwasm/blob/v1.5.11/packages/std/src/results/events.rs
 [search]: ../x/cli/impl/query_search.go
+[rpc]: ../bft/rpc/core/event_search.go
