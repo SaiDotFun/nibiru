@@ -1,14 +1,19 @@
 package core
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
+	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	cmtmath "github.com/NibiruChain/nibiru/v2/bft/libs/math"
 	cmtquery "github.com/NibiruChain/nibiru/v2/bft/libs/pubsub/query"
 	ctypes "github.com/NibiruChain/nibiru/v2/bft/rpc/core/types"
 	rpctypes "github.com/NibiruChain/nibiru/v2/bft/rpc/jsonrpc/types"
+	"github.com/NibiruChain/nibiru/v2/bft/state/txindex/kv"
 	"github.com/NibiruChain/nibiru/v2/bft/state/txindex/null"
 	"github.com/NibiruChain/nibiru/v2/bft/types"
 )
@@ -50,9 +55,10 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	}, nil
 }
 
-// TxSearch allows you to query for multiple transactions results. It returns a
-// list of transactions (maximum ?per_page entries) and the total count.
+// TxSearch searches transaction results for predicates across indexed events in
+// each transaction. It returns a page of results and the total count.
 // More: https://docs.cometbft.com/v0.37/rpc/#/Info/tx_search
+// Inequalities on the same attribute form one range for a single value.
 func TxSearch(
 	ctx *rpctypes.Context,
 	query string,
@@ -60,19 +66,25 @@ func TxSearch(
 	pagePtr, perPagePtr *int,
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
-	// if index is disabled, return error
+	return txSearchRPC(ctx, &query, prove, pagePtr, perPagePtr, orderBy, nil)
+}
+
+func txSearchRPC(
+	ctx *rpctypes.Context,
+	query *string,
+	prove bool,
+	pagePtr, perPagePtr *int,
+	orderBy string,
+	filter *kv.SearchFilter,
+) (*ctypes.ResultTxSearch, error) {
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, errors.New("transaction indexing is disabled")
-	} else if len(query) > maxQueryLength {
-		return nil, errors.New("maximum query length exceeded")
+	}
+	if (query == nil) == (filter == nil) {
+		return nil, errors.New("provide exactly one of query or filter")
 	}
 
-	q, err := cmtquery.New(query)
-	if err != nil {
-		return nil, err
-	}
-
-	results, err := env.TxIndexer.Search(ctx.Context(), q)
+	results, err := matchingTransactions(ctx.Context(), query, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -132,4 +144,39 @@ func TxSearch(
 	}
 
 	return &ctypes.ResultTxSearch{Txs: apiResults, TotalCount: totalCount}, nil
+}
+
+func matchingTransactions(ctx context.Context, query *string, filter *kv.SearchFilter) ([]*abci.TxResult, error) {
+	if filter != nil {
+		encoded, err := json.Marshal(filter)
+		if err != nil {
+			return nil, err
+		}
+		if len(encoded) > 16*1024 {
+			return nil, errors.New("maximum structured transaction filter length exceeded")
+		}
+		indexer, ok := env.TxIndexer.(interface {
+			SearchFilter(context.Context, kv.SearchFilter) ([]*abci.TxResult, error)
+		})
+		if !ok {
+			return nil, errors.New("structured transaction search is not supported by the configured transaction indexer")
+		}
+		searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		return indexer.SearchFilter(searchCtx, *filter)
+	}
+
+	if len(*query) > maxQueryLength {
+		return nil, errors.New("maximum query length exceeded")
+	}
+	q, err := cmtquery.New(*query)
+	if err != nil {
+		return nil, err
+	}
+	if indexer, ok := env.TxIndexer.(interface {
+		SearchByTransaction(context.Context, *cmtquery.Query) ([]*abci.TxResult, error)
+	}); ok {
+		return indexer.SearchByTransaction(ctx, q)
+	}
+	return env.TxIndexer.Search(ctx, q)
 }

@@ -104,3 +104,7 @@ func (e ErrNoABCIResponsesForHeight) Error() string {
 }
 
 var ErrABCIResponsesNotPersisted = errors.New("node is not persisting abci responses")
+
+// ErrCorruptABCIResponses distinguishes malformed persisted results from a
+// storage failure that a caller can retry.
+var ErrCorruptABCIResponses = errors.New("cannot decode persisted ABCI responses")

@@ -22,12 +22,16 @@ func QueryCmd() *cobra.Command {
 		RunE:                       client.ValidateCmd,
 	}
 
+	legacyTxsCmd := authcmd.QueryTxsByEventsCmd()
+	legacyTxsCmd.Hidden = true
+
 	rootQueryCmd.AddCommand(
 		authcmd.GetAccountCmd(),
 		rpc.ValidatorCommand(),
 		rpc.BlockCommand(),
-		authcmd.QueryTxsByEventsCmd(),
+		legacyTxsCmd,
 		QueryTxCmd(),
+		querySearchCmd("query"),
 	)
 
 	app.ModuleBasics.AddQueryCommands(rootQueryCmd)
@@ -56,6 +60,7 @@ func TxCmd() *cobra.Command {
 		authcmd.GetBroadcastCommand(),
 		authcmd.GetEncodeCommand(),
 		authcmd.GetDecodeCommand(),
+		querySearchCmd("tx"),
 	)
 
 	app.ModuleBasics.AddTxCommands(cmd)
@@ -84,12 +89,13 @@ var txHelpGroups = []helpGroup{
 		"sign", "sign-batch", "multi-sign", "multisign-batch",
 		"validate-signatures", "encode", "decode", "broadcast",
 	}},
+	{ID: "chain", Title: "Chain Data:", Names: []string{"search"}},
 }
 
 var queryHelpGroups = []helpGroup{
 	{ID: "everyday", Title: "Everyday Modules:", Names: everydayModules},
 	{ID: "chain", Title: "Chain Data:", Names: []string{
-		"account", "block", "tx", "txs", "tendermint-validator-set",
+		"account", "block", "search", "tx", "tendermint-validator-set",
 	}},
 }
 

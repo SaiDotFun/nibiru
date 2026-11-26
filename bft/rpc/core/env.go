@@ -14,6 +14,7 @@ import (
 	"github.com/NibiruChain/nibiru/v2/bft/p2p"
 	"github.com/NibiruChain/nibiru/v2/bft/proxy"
 	sm "github.com/NibiruChain/nibiru/v2/bft/state"
+	"github.com/NibiruChain/nibiru/v2/bft/state/eventsearch"
 	"github.com/NibiruChain/nibiru/v2/bft/state/indexer"
 	"github.com/NibiruChain/nibiru/v2/bft/state/txindex"
 	"github.com/NibiruChain/nibiru/v2/bft/types"
@@ -90,6 +91,7 @@ type Environment struct {
 	GenDoc           *types.GenesisDoc // cache the genesis structure
 	TxIndexer        txindex.TxIndexer
 	BlockIndexer     indexer.BlockIndexer
+	EventSearch      *eventsearch.Store
 	ConsensusReactor *consensus.Reactor
 	EventBus         *types.EventBus // thread safe
 	Mempool          mempl.Mempool

@@ -875,9 +875,19 @@ paths:
     get:
       summary: Search for transactions
       description: |
-        Search for transactions w/ their results.
+        Search for indexed transactions and return their results. The raw query
+        can match separate indexed events in the same transaction. For conditions
+        that must match one event, use a named structured filter in JSON-RPC.
 
-        See /subscribe for the query syntax.
+        Join conditions with `AND`. Use `=`, `CONTAINS`, or `EXISTS` to match
+        attributes, and `<`, `<=`, `>`, or `>=` for ranges. Quote text with
+        single quotes. Unquoted decimals, `DATE YYYY-MM-DD`, and `TIME`
+        followed by an RFC3339 timestamp compare by value, including values
+        stored as protobuf JSON strings. Bounds on the same
+        attribute must match one value. For example, use
+        `sample.balance >= 0.5 AND sample.balance < 2`. Use `tx.height` for
+        the transaction's inclusion height and `event.attribute EXISTS` to
+        check for an indexed attribute.
       operationId: tx_search
       parameters:
         - in: query
@@ -923,7 +933,7 @@ paths:
         - Info
       responses:
         "200":
-          description: List of unconfirmed transactions
+          description: Page of matching transactions and their results
           content:
             application/json:
               schema:
@@ -938,9 +948,15 @@ paths:
     get:
       summary: Search for blocks by BeginBlock and EndBlock events
       description: |
-        Search for blocks by BeginBlock and EndBlock events.
+        Search indexed block heights and BeginBlock or EndBlock event
+        attributes. Attribute conditions match within one indexed event when
+        the index records event identity.
 
-        See /subscribe for the query syntax.
+        Use the same raw syntax as transaction search. Join conditions with
+        `AND` and use `block.height` for the block height. For example, use
+        `block.height >= 1000 AND sample.timestamp >= TIME 2026-01-01T00:00:00Z`.
+        Historical `EXISTS` checks an exact indexed attribute key. Live
+        subscriptions apply their own matching rules.
       operationId: block_search
       parameters:
         - in: query

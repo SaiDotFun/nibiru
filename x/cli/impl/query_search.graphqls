@@ -1,0 +1,94 @@
+scalar Long
+"""Attribute names and their first stored string values."""
+scalar EventAttributes
+"""An object keyed by the event type, with its attributes as the value."""
+scalar EventPayload
+
+type Query {
+  txs(where: TransactionFilter!, first: Int = 20, page: Int = 1, order: SortOrder = ASC): TransactionPage!
+  events(where: EventFilter!, first: Int = 20, after: String): EventPage!
+}
+
+enum SortOrder {
+  ASC
+  DESC
+}
+
+enum EventPhase {
+  BEGIN_BLOCK
+  TX
+  END_BLOCK
+}
+
+input HeightRange {
+  gte: Long
+  lte: Long
+}
+
+input AttributeFilter {
+  key: String!
+  eq: String
+  jsonStringEq: String
+  exists: Boolean
+}
+
+input TransactionEventFilter {
+  type: String!
+  attributes: [AttributeFilter!]
+}
+
+input TransactionFilter {
+  height: HeightRange
+  hash: String
+  events: [TransactionEventFilter!]
+}
+
+input EventFilter {
+  height: HeightRange
+  phases: [EventPhase!]
+  type: String
+  attributes: [AttributeFilter!]
+}
+
+type TransactionPage {
+  nodes: [Transaction!]!
+  totalCount: Int!
+}
+
+type EventPage {
+  nodes: [IndexedEvent!]!
+  nextCursor: String
+  coverage: [IndexedHeightRange!]!
+}
+
+type Transaction {
+  hash: String!
+  height: Long!
+  index: Int!
+  code: Int!
+  gasWanted: Long!
+  gasUsed: Long!
+  events: [Event!]!
+}
+
+type Event {
+  type: String!
+  attributes: EventAttributes!
+  event: EventPayload!
+}
+
+type IndexedEvent {
+  height: Long!
+  phase: EventPhase!
+  txIndex: Int
+  txHash: String
+  eventIndex: Int!
+  type: String!
+  attributes: EventAttributes!
+  event: EventPayload!
+}
+
+type IndexedHeightRange {
+  minHeight: Long!
+  maxHeight: Long!
+}

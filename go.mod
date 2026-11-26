@@ -99,6 +99,7 @@ require (
 	github.com/tidwall/gjson v1.19.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/tyler-smith/go-bip39 v1.1.0
+	github.com/vektah/gqlparser/v2 v2.5.26
 	golang.org/x/crypto v0.57.0
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
 	golang.org/x/mod v0.41.0
@@ -136,6 +137,7 @@ require (
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.2 // indirect
+	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.33.6 // indirect

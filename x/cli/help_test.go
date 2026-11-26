@@ -26,7 +26,7 @@ func TestRootHelpShape(t *testing.T) {
 
 	// Only these section headings appear.
 	headings := regexp.MustCompile(`(?m)^[A-Z][A-Za-z ]*:$`).FindAllString(out, -1)
-	require.Equal(t, []string{"Commands:", "Flags:"}, headings)
+	require.Equal(t, []string{"Commands:", "Examples:", "Flags:"}, headings)
 	require.NotContains(t, out, "Everyday Commands")
 	require.NotContains(t, out, "Run a Node")
 
@@ -54,6 +54,19 @@ func TestRootHelpShape(t *testing.T) {
 		"start", "init", "tendermint", "base64-decode", "build-stargate-wasm",
 	} {
 		require.NotContains(t, rows, name)
+	}
+}
+
+func TestRootHelpExamplesWithoutArguments(t *testing.T) {
+	out, err := runRoot(t, "")
+	require.NoError(t, err)
+	for _, example := range []string{
+		"nibiru version --long -o json",
+		"nibiru query block --node https://rpc.nibiru.fi:443",
+		"nibiru query search --schema",
+		"https://nibiru.fi/docs/dev/cli",
+	} {
+		require.Contains(t, out, example)
 	}
 }
 
@@ -133,6 +146,8 @@ func TestHelpPrintsInvokedName(t *testing.T) {
 
 			require.Contains(t, help, "help for "+name)
 			require.Contains(t, help, nibid.RootHelpFooter(name))
+			require.Contains(t, help, name+" query search --schema")
+			require.NotContains(t, help, other+" query search --schema")
 			require.NotContains(t, help, `"`+other+" <command>")
 			// On-disk defaults do not follow the invoked name.
 			require.True(t, strings.HasSuffix(app.DefaultNodeHome, "/.nibid"))

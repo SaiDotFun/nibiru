@@ -29,7 +29,7 @@ func RootHelpFooter(name string) string {
 }
 
 // renderRootUsage builds the usage text of the root command: the command
-// list, the flags, and a closing hint. It replaces the generic
+// list, examples, flags, and links to more help. It replaces the generic
 // "Usage: nibid [command]" block. Subcommands keep cobra's usage template.
 func renderRootUsage(root *cobra.Command) string {
 	var b strings.Builder
@@ -51,8 +51,15 @@ func renderRootUsage(root *cobra.Command) string {
 		fmt.Fprintf(&b, "  %-*s  %s\n", namePad, c.Name(), desc)
 	}
 
+	fmt.Fprintf(&b, `
+Examples:
+  %[1]s version --long -o json                           # Show the version and binary paths
+  %[1]s query block --node https://rpc.nibiru.fi:443          # Read the latest mainnet block
+  %[1]s query search --schema                            # Print the search schema offline
+`, root.Name())
 	fmt.Fprintf(&b, "\nFlags:\n%s\n",
 		strings.TrimRight(root.LocalFlags().FlagUsages(), " \n"))
+	b.WriteString("\nCLI guide at https://nibiru.fi/docs/dev/cli\n")
 	fmt.Fprintf(&b, "\n%s\n", RootHelpFooter(root.Name()))
 	return b.String()
 }

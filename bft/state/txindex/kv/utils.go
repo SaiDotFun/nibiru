@@ -4,18 +4,13 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/NibiruChain/nibiru/v2/bft/libs/pubsub/query"
 	"github.com/NibiruChain/nibiru/v2/bft/state/indexer"
-	"github.com/NibiruChain/nibiru/v2/bft/types"
 	"github.com/google/orderedcode"
 )
 
 type HeightInfo struct {
-	heightRange     indexer.QueryRange
-	height          int64
-	heightEqIdx     int
-	onlyHeightRange bool
-	onlyHeightEq    bool
+	heightRange indexer.QueryRange
+	height      int64
 }
 
 // IntInSlice returns true if a is found in the list.
@@ -46,57 +41,10 @@ func ParseEventSeqFromEventKey(key []byte) (int64, error) {
 
 	return eventSeq, nil
 }
-func dedupHeight(conditions []query.Condition) (dedupConditions []query.Condition, heightInfo HeightInfo) {
-	heightInfo.heightEqIdx = -1
-	heightRangeExists := false
-	found := false
-	var heightCondition []query.Condition
-	heightInfo.onlyHeightEq = true
-	heightInfo.onlyHeightRange = true
-	for _, c := range conditions {
-		if c.CompositeKey == types.TxHeightKey {
-			if c.Op == query.OpEqual {
-				if heightRangeExists || found {
-					continue
-				} else {
-					found = true
-					heightCondition = append(heightCondition, c)
-					heightInfo.height = c.Operand.(*big.Int).Int64() //Height is always int64
-				}
-			} else {
-				heightInfo.onlyHeightEq = false
-				heightRangeExists = true
-				dedupConditions = append(dedupConditions, c)
-			}
-		} else {
-			heightInfo.onlyHeightRange = false
-			heightInfo.onlyHeightEq = false
-			dedupConditions = append(dedupConditions, c)
-		}
-	}
-	if !heightRangeExists && len(heightCondition) != 0 {
-		heightInfo.heightEqIdx = len(dedupConditions)
-		heightInfo.onlyHeightRange = false
-		dedupConditions = append(dedupConditions, heightCondition...)
-	} else {
-		// If we found a range make sure we set the height idx to -1 as the height equality
-		// will be removed
-		heightInfo.heightEqIdx = -1
-		heightInfo.height = 0
-		heightInfo.onlyHeightEq = false
-	}
-	return dedupConditions, heightInfo
-}
 
 func checkHeightConditions(heightInfo HeightInfo, keyHeight int64) bool {
-	if heightInfo.heightRange.Key != "" {
-		if !checkBounds(heightInfo.heightRange, big.NewInt(keyHeight)) {
-			return false
-		}
-	} else {
-		if heightInfo.height != 0 && keyHeight != heightInfo.height {
-			return false
-		}
+	if heightInfo.height > 0 {
+		return keyHeight == heightInfo.height
 	}
-	return true
+	return heightInfo.heightRange.Key == "" || checkBounds(heightInfo.heightRange, big.NewInt(keyHeight))
 }

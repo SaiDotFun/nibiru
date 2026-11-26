@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -220,6 +221,204 @@ func TestTxSearch(t *testing.T) {
 				for _, txr := range results {
 					assert.True(t, proto.Equal(txResult, txr))
 				}
+			}
+		})
+	}
+}
+
+func TestTxSearchHashCompanions(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+	const eventType = "eth.evm.v1.EventEthereumTx"
+	const typedHash = `eth.evm.v1.EventEthereumTx.eth_hash = '"0x1234"'`
+	txResult := txResultWithEvents([]abci.Event{
+		{Type: eventType, Attributes: []abci.EventAttribute{
+			{Key: "eth_hash", Value: `"0x1234"`, Index: true},
+			{Key: "recipient", Value: `"alice"`, Index: true},
+			{Key: "private", Value: "yes", Index: false},
+		}},
+		{Type: eventType, Attributes: []abci.EventAttribute{
+			{Key: "eth_hash", Value: `"0x4321"`, Index: true},
+			{Key: "recipient", Value: `"bob"`, Index: true},
+		}},
+	})
+	require.NoError(t, indexer.Index(txResult))
+	otherTx := txResultWithEvents([]abci.Event{
+		{Type: eventType, Attributes: []abci.EventAttribute{
+			{Key: "eth_hash", Value: `"0x1234"`, Index: true},
+			{Key: "recipient", Value: `"bob"`, Index: true},
+		}},
+	})
+	otherTx.Tx = []byte("different transaction")
+	otherTx.Index++
+	require.NoError(t, indexer.Index(otherTx))
+
+	txHash := types.Tx(txResult.Tx).Hash()
+	hashFilter := fmt.Sprintf("tx.hash = '%X'", txHash)
+	otherHashFilter := fmt.Sprintf("tx.hash = '%X'", types.Tx(otherTx.Tx).Hash())
+	for _, test := range []struct {
+		name  string
+		query string
+		match bool
+	}{
+		{"hash only", hashFilter, true},
+		{"missing hash with event predicate", fmt.Sprintf("tx.hash = '%X' AND %s", types.Tx("missing").Hash(), typedHash), false},
+		{"typed attribute equality", hashFilter + " AND " + typedHash, true},
+		{"bare value mismatch", hashFilter + " AND eth.evm.v1.EventEthereumTx.eth_hash = '0x1234'", false},
+		{"indexed attribute exists", hashFilter + " AND eth.evm.v1.EventEthereumTx.eth_hash EXISTS", true},
+		{"unindexed attribute absent from search", hashFilter + " AND eth.evm.v1.EventEthereumTx.private EXISTS", false},
+		{"same event", typedHash + ` AND eth.evm.v1.EventEthereumTx.recipient = '"alice"' AND ` + hashFilter, true},
+		{"different events", typedHash + ` AND eth.evm.v1.EventEthereumTx.recipient = '"bob"' AND ` + hashFilter, false},
+		{"matching height", fmt.Sprintf("%s AND tx.height = %d", hashFilter, txResult.Height), true},
+		{"different height", fmt.Sprintf("%s AND tx.height > %d", hashFilter, txResult.Height), false},
+		{"duplicate hash", fmt.Sprintf("%s AND tx.hash = '%x'", hashFilter, txHash), true},
+		{"different hashes", hashFilter + " AND " + otherHashFilter, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			results, err := indexer.Search(t.Context(), query.MustParse(test.query))
+			require.NoError(t, err)
+			if !test.match {
+				require.Empty(t, results)
+				return
+			}
+			require.Len(t, results, 1)
+			require.True(t, proto.Equal(txResult, results[0]))
+		})
+	}
+}
+
+func TestTxSearchHashWithReindexedTransaction(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+	txResult := txResultWithEvents([]abci.Event{
+		{Type: "sample", Attributes: []abci.EventAttribute{{Key: "name", Value: "old", Index: true}}},
+	})
+	txResult.Height = 5
+	require.NoError(t, indexer.Index(txResult))
+	txResult.Height = 7
+	txResult.Result.Events[0].Attributes[0].Value = "new"
+	require.NoError(t, indexer.Index(txResult))
+
+	hashFilter := fmt.Sprintf("tx.hash = '%X'", types.Tx(txResult.Tx).Hash())
+	for _, condition := range []string{"tx.height=5", "sample.name='old'"} {
+		results, err := indexer.Search(t.Context(), query.MustParse(hashFilter+" AND "+condition))
+		require.NoError(t, err)
+		require.Empty(t, results, condition)
+	}
+	for _, condition := range []string{"tx.height=7", "tx.height>=7", "sample.name='new'"} {
+		results, err := indexer.Search(t.Context(), query.MustParse(hashFilter+" AND "+condition))
+		require.NoError(t, err)
+		require.Len(t, results, 1, condition)
+		require.True(t, proto.Equal(txResult, results[0]), condition)
+	}
+}
+
+func TestTxSearchEventRangeConjunctions(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+	txResult := txResultWithEvents([]abci.Event{
+		{Type: "sample", Attributes: []abci.EventAttribute{{Key: "counter", Value: "9", Index: true}}},
+	})
+	require.NoError(t, indexer.Index(txResult))
+
+	for _, tc := range []struct {
+		first, second string
+		matches       int
+	}{
+		{">10", ">5", 0},
+		{"<8", "<10", 0},
+		{">9", ">=9", 0},
+		{"<9", "<=9", 0},
+		{">=9", "<=9", 1},
+		{">=9", "<9", 0},
+		{">8", "<10", 1},
+	} {
+		for _, pair := range [][2]string{{tc.first, tc.second}, {tc.second, tc.first}} {
+			expr := fmt.Sprintf("sample.counter%s AND sample.counter%s", pair[0], pair[1])
+			t.Run(expr, func(t *testing.T) {
+				results, err := indexer.Search(t.Context(), query.MustParse(expr))
+				require.NoError(t, err)
+				require.Len(t, results, tc.matches)
+			})
+		}
+	}
+}
+
+func TestFlatSearchRequiresOneValuePerRange(t *testing.T) {
+	index := NewTxIndex(db.NewMemDB())
+	result := txResultWithEvents([]abci.Event{
+		{Type: "sample", Attributes: []abci.EventAttribute{{Key: "amount", Value: "1", Index: true}}},
+		{Type: "sample", Attributes: []abci.EventAttribute{{Key: "amount", Value: "9", Index: true}}},
+	})
+	require.NoError(t, index.Index(result))
+	for _, tc := range []struct {
+		query string
+		count int
+	}{
+		{"sample.amount = '1' AND sample.amount = '9'", 1},
+		{"sample.amount < 2 AND sample.amount > 8", 0},
+		{"sample.amount > 8 AND sample.amount < 10", 1},
+	} {
+		rows, err := index.SearchByTransaction(t.Context(), query.MustParse(tc.query))
+		require.NoError(t, err)
+		require.Len(t, rows, tc.count, tc.query)
+	}
+}
+
+func TestTxSearchHeightConjunctions(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+	for _, height := range []int64{1, 5, 10} {
+		txResult := txResultWithEvents([]abci.Event{
+			{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
+		})
+		txResult.Height = height
+		txResult.Tx = []byte(fmt.Sprintf("tx at height %d", height))
+		require.NoError(t, indexer.Index(txResult))
+	}
+	hashFilter := fmt.Sprintf("tx.hash = '%X'", types.Tx("tx at height 5").Hash())
+
+	for _, test := range []struct {
+		predicates string
+		heights    []int64
+	}{
+		{"tx.height = 5 AND tx.height = 5", []int64{5}},
+		{"tx.height = 1 AND tx.height = 5", nil},
+		{"tx.height = 5 AND tx.height = 1", nil},
+		{"tx.height = 5 AND tx.height >= 1", []int64{5}},
+		{"tx.height >= 1 AND tx.height = 5", []int64{5}},
+		{"tx.height = 5 AND tx.height > 5", nil},
+		{"tx.height > 5 AND tx.height = 5", nil},
+		{"tx.height = 5 AND tx.height <= 5", []int64{5}},
+		{"tx.height = 5 AND tx.height < 5", nil},
+		{"tx.height > 5 AND tx.height >= 1", []int64{10}},
+		{"tx.height >= 1 AND tx.height > 5", []int64{10}},
+		{"tx.height >= 5 AND tx.height > 5", []int64{10}},
+		{"tx.height > 5 AND tx.height >= 5", []int64{10}},
+		{"tx.height < 5 AND tx.height <= 10", []int64{1}},
+		{"tx.height <= 10 AND tx.height < 5", []int64{1}},
+		{"tx.height <= 5 AND tx.height < 5", []int64{1}},
+		{"tx.height < 5 AND tx.height <= 5", []int64{1}},
+		{"tx.height >= 5 AND tx.height <= 5", []int64{5}},
+		{"tx.height > 5 AND tx.height <= 5", nil},
+	} {
+		t.Run(test.predicates, func(t *testing.T) {
+			for _, companion := range []string{"", " AND account.number = 1", " AND account.number >= 1"} {
+				results, err := indexer.Search(t.Context(), query.MustParse(test.predicates+companion))
+				require.NoError(t, err)
+				var heights []int64
+				for _, result := range results {
+					heights = append(heights, result.Height)
+				}
+				require.ElementsMatch(t, test.heights, heights, companion)
+			}
+
+			results, err := indexer.Search(t.Context(), query.MustParse(hashFilter+" AND "+test.predicates))
+			require.NoError(t, err)
+			var heights []int64
+			for _, result := range results {
+				heights = append(heights, result.Height)
+			}
+			if slices.Contains(test.heights, int64(5)) {
+				require.Equal(t, []int64{5}, heights)
+			} else {
+				require.Empty(t, heights)
 			}
 		})
 	}
@@ -528,16 +727,16 @@ func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
 		},
 		{
 			q:     "account.number >= 1 AND tx.height = 3 AND tx.height > 0",
-			found: true,
+			found: false,
 		},
 		{
 			q:     "account.number >= 1 AND tx.height > 0 AND tx.height = 3",
-			found: true,
+			found: false,
 		},
 
 		{
 			q:     "account.number >= 1 AND tx.height = 1  AND tx.height = 2 AND tx.height = 3",
-			found: true,
+			found: false,
 		},
 
 		{
@@ -579,7 +778,7 @@ func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
 		if tc.found {
 			len = 1
 		}
-		assert.Len(t, results, len)
+		require.Len(t, results, len, tc.q)
 		assert.True(t, !tc.found || proto.Equal(txResult, results[0]))
 
 	}

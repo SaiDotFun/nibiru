@@ -544,6 +544,10 @@ discard_abci_responses = {{ .Storage.DiscardABCIResponses}}
 # When "kv" or "psql" is chosen "tx.height" and "tx.hash" will always be indexed.
 indexer = "{{ .TxIndex.Indexer }}"
 
+# Index events from committed block results for the event_search RPC.
+# Requires persisted ABCI responses and additional disk space.
+event-search = {{ .TxIndex.EventSearch }}
+
 # The PostgreSQL connection configuration, the connection format:
 #   postgresql://<user>:<password>@<host>:<port>/<db>?<opts>
 psql-conn = "{{ .TxIndex.PsqlConn }}"

@@ -622,15 +622,21 @@ func TestTxSearch(t *testing.T) {
 		result, err = c.TxSearch(context.Background(), "tx.height >= 1", false, nil, nil, "asc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
-			require.LessOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
-			require.LessOrEqual(t, result.Txs[k].Index, result.Txs[k+1].Index)
+			current, next := result.Txs[k], result.Txs[k+1]
+			require.LessOrEqual(t, current.Height, next.Height)
+			if current.Height == next.Height {
+				require.LessOrEqual(t, current.Index, next.Index)
+			}
 		}
 
 		result, err = c.TxSearch(context.Background(), "tx.height >= 1", false, nil, nil, "desc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
-			require.GreaterOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
-			require.GreaterOrEqual(t, result.Txs[k].Index, result.Txs[k+1].Index)
+			current, next := result.Txs[k], result.Txs[k+1]
+			require.GreaterOrEqual(t, current.Height, next.Height)
+			if current.Height == next.Height {
+				require.GreaterOrEqual(t, current.Index, next.Index)
+			}
 		}
 		// check pagination
 		perPage = 3

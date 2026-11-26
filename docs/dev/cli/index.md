@@ -22,9 +22,21 @@ program, and help prints the name you invoked. Bun and npm installs expose
 `nibiru`, which forwards all arguments to the native binary. The examples in
 these guides use `nibid`; replace it with `nibiru` as you prefer.
 
+## Install the Agent Skill
+
+The [`nibiru-cli` skill](https://github.com/Unique-Divine/jiyuu/tree/main/ai-skills/nibiru-cli)
+gives coding agents examples for querying the chain, inspecting transactions,
+and using the CLI. Install the [Nibiru binary](./nibid-binary.md) first.
+Then install the skill from the public Jiyuu repository.
+
+```sh
+bunx skills add Unique-Divine/jiyuu --skill nibiru-cli
+```
+
 ## Command List
 
-`nibid --help` prints one command list in a fixed order:
+Running `nibiru` without arguments or with `--help` shows examples and
+lists commands in this order:
 `tx`, `q` (alias `query`), `keys`, `config`, `status`, `debug`, `localnet`,
 `node`, `help`, and `version`. Commands that run a node live under
 `nibid node`, for example `nibid node start` and

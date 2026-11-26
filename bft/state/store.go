@@ -1,9 +1,11 @@
 package state
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -387,28 +389,7 @@ func ABCIResponsesResultsHash(ar *cmtstate.ABCIResponses) []byte {
 // database. If the node has DiscardABCIResponses set to true, ErrABCIResponsesNotPersisted
 // is persisted. If not found, ErrNoABCIResponsesForHeight is returned.
 func (store dbStore) LoadABCIResponses(height int64) (*cmtstate.ABCIResponses, error) {
-	if store.DiscardABCIResponses {
-		return nil, ErrABCIResponsesNotPersisted
-	}
-
-	buf, err := store.db.Get(calcABCIResponsesKey(height))
-	if err != nil {
-		return nil, err
-	}
-	if len(buf) == 0 {
-		return nil, ErrNoABCIResponsesForHeight{height}
-	}
-
-	abciResponses := new(cmtstate.ABCIResponses)
-	err = abciResponses.Unmarshal(buf)
-	if err != nil {
-		// DATA HAS BEEN CORRUPTED OR THE SPEC HAS CHANGED
-		cmtos.Exit(fmt.Sprintf(`LoadABCIResponses: Data has been corrupted or its spec has
-                changed: %v\n`, err))
-	}
-	// TODO: ensure that buf is completely read.
-
-	return abciResponses, nil
+	return store.readABCIResponses(height, true)
 }
 
 // LoadLastABCIResponses loads the ABCIResponses from the most recent height.
@@ -683,6 +664,57 @@ func NewBootstrapStore(db dbm.DB, options StoreOptions) BootstrapStore {
 			StoreOptions: options,
 		},
 	}
+}
+
+// FirstRetainedABCIHeight finds the lowest persisted height during event
+// index initialization. ABCI keys use decimal heights and sort lexically.
+func (store BootstrapStore) FirstRetainedABCIHeight(ctx context.Context) (int64, error) {
+	prefix := []byte("abciResponsesKey:")
+	iter, err := dbm.IteratePrefix(store.db, prefix)
+	if err != nil {
+		return 0, err
+	}
+	defer iter.Close()
+	var first int64
+	for ; iter.Valid(); iter.Next() {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		height, err := strconv.ParseInt(string(iter.Key()[len(prefix):]), 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		if height > 0 && (first == 0 || height < first) {
+			first = height
+		}
+	}
+	return first, iter.Error()
+}
+
+// ReadABCIResponses returns a recoverable error on corrupt historical results.
+func (store BootstrapStore) ReadABCIResponses(height int64) (*cmtstate.ABCIResponses, error) {
+	return store.readABCIResponses(height, false)
+}
+
+func (store dbStore) readABCIResponses(height int64, fatalCorruption bool) (*cmtstate.ABCIResponses, error) {
+	if store.DiscardABCIResponses {
+		return nil, ErrABCIResponsesNotPersisted
+	}
+	buf, err := store.db.Get(calcABCIResponsesKey(height))
+	if err != nil {
+		return nil, err
+	}
+	if len(buf) == 0 {
+		return nil, ErrNoABCIResponsesForHeight{height}
+	}
+	result := new(cmtstate.ABCIResponses)
+	if err := result.Unmarshal(buf); err != nil {
+		if fatalCorruption {
+			cmtos.Exit(fmt.Sprintf("LoadABCIResponses: data at height %d has been corrupted or its schema has changed: %v", height, err))
+		}
+		return nil, fmt.Errorf("%w at height %d: %w", ErrCorruptABCIResponses, height, err)
+	}
+	return result, nil
 }
 
 func (store BootstrapStore) SetOfflineStateSyncHeight(height int64) error {

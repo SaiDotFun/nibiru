@@ -40,6 +40,7 @@ import (
 	grpccore "github.com/NibiruChain/nibiru/v2/bft/rpc/grpc"
 	rpcserver "github.com/NibiruChain/nibiru/v2/bft/rpc/jsonrpc/server"
 	sm "github.com/NibiruChain/nibiru/v2/bft/state"
+	"github.com/NibiruChain/nibiru/v2/bft/state/eventsearch"
 	"github.com/NibiruChain/nibiru/v2/bft/state/indexer"
 	blockidxkv "github.com/NibiruChain/nibiru/v2/bft/state/indexer/block/kv"
 	blockidxnull "github.com/NibiruChain/nibiru/v2/bft/state/indexer/block/null"
@@ -356,26 +357,29 @@ type Node struct {
 	isListening bool
 
 	// services
-	eventBus          *types.EventBus // pub/sub for services
-	stateStore        sm.Store
-	blockStore        *store.BlockStore // store the blockchain to disk
-	bcReactor         p2p.Reactor       // for block-syncing
-	mempoolReactor    p2p.Reactor       // for gossipping transactions
-	mempool           mempl.Mempool
-	stateSync         bool                    // whether the node should state sync on startup
-	stateSyncReactor  *statesync.Reactor      // for hosting and restoring state sync snapshots
-	stateSyncProvider statesync.StateProvider // provides state data for bootstrapping a node
-	stateSyncGenesis  sm.State                // provides the genesis state for state sync
-	consensusState    *cs.State               // latest consensus state
-	consensusReactor  *cs.Reactor             // for participating in the consensus
-	pexReactor        *pex.Reactor            // for exchanging peer addresses
-	evidencePool      *evidence.Pool          // tracking evidence
-	proxyApp          proxy.AppConns          // connection to the application
-	rpcListeners      []net.Listener          // rpc servers
-	txIndexer         txindex.TxIndexer
-	blockIndexer      indexer.BlockIndexer
-	indexerService    *txindex.IndexerService
-	prometheusSrv     *http.Server
+	eventBus              *types.EventBus // pub/sub for services
+	stateStore            sm.Store
+	blockStore            *store.BlockStore // store the blockchain to disk
+	bcReactor             p2p.Reactor       // for block-syncing
+	mempoolReactor        p2p.Reactor       // for gossipping transactions
+	mempool               mempl.Mempool
+	stateSync             bool                    // whether the node should state sync on startup
+	stateSyncReactor      *statesync.Reactor      // for hosting and restoring state sync snapshots
+	stateSyncProvider     statesync.StateProvider // provides state data for bootstrapping a node
+	stateSyncGenesis      sm.State                // provides the genesis state for state sync
+	consensusState        *cs.State               // latest consensus state
+	consensusReactor      *cs.Reactor             // for participating in the consensus
+	pexReactor            *pex.Reactor            // for exchanging peer addresses
+	evidencePool          *evidence.Pool          // tracking evidence
+	proxyApp              proxy.AppConns          // connection to the application
+	rpcListeners          []net.Listener          // rpc servers
+	txIndexer             txindex.TxIndexer
+	blockIndexer          indexer.BlockIndexer
+	indexerService        *txindex.IndexerService
+	eventSearch           *eventsearch.Store
+	stopEventSearch       func()
+	eventSearchDBProvider DBProvider
+	prometheusSrv         *http.Server
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -892,6 +896,10 @@ func NewNodeWithContext(ctx context.Context,
 	options ...Option,
 ) (*Node, error) {
 
+	if config.TxIndex.EventSearch && config.Storage.DiscardABCIResponses {
+		return nil, errors.New("event-search requires persisted ABCI responses")
+	}
+
 	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err
@@ -1098,23 +1106,24 @@ func NewNodeWithContext(ctx context.Context,
 		nodeInfo:  nodeInfo,
 		nodeKey:   nodeKey,
 
-		stateStore:       stateStore,
-		blockStore:       blockStore,
-		bcReactor:        bcReactor,
-		mempoolReactor:   mempoolReactor,
-		mempool:          mempool,
-		consensusState:   consensusState,
-		consensusReactor: consensusReactor,
-		stateSyncReactor: stateSyncReactor,
-		stateSync:        stateSync,
-		stateSyncGenesis: state, // Shouldn't be necessary, but need a way to pass the genesis state
-		pexReactor:       pexReactor,
-		evidencePool:     evidencePool,
-		proxyApp:         proxyApp,
-		txIndexer:        txIndexer,
-		indexerService:   indexerService,
-		blockIndexer:     blockIndexer,
-		eventBus:         eventBus,
+		stateStore:            stateStore,
+		blockStore:            blockStore,
+		bcReactor:             bcReactor,
+		mempoolReactor:        mempoolReactor,
+		mempool:               mempool,
+		consensusState:        consensusState,
+		consensusReactor:      consensusReactor,
+		stateSyncReactor:      stateSyncReactor,
+		stateSync:             stateSync,
+		stateSyncGenesis:      state, // Shouldn't be necessary, but need a way to pass the genesis state
+		pexReactor:            pexReactor,
+		evidencePool:          evidencePool,
+		proxyApp:              proxyApp,
+		txIndexer:             txIndexer,
+		indexerService:        indexerService,
+		eventSearchDBProvider: dbProvider,
+		blockIndexer:          blockIndexer,
+		eventBus:              eventBus,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -1126,7 +1135,55 @@ func NewNodeWithContext(ctx context.Context,
 }
 
 // OnStart starts the Node. It implements service.Service.
-func (n *Node) OnStart() error {
+func (n *Node) OnStart() (startErr error) {
+	var searchState eventSearchState
+	var searchFirst int64
+	if n.config.TxIndex.EventSearch {
+		eventDB, err := n.eventSearchDBProvider(&DBContext{"event_search_v1", n.config})
+		if err != nil {
+			return fmt.Errorf("open event search index: %w", err)
+		}
+		n.eventSearch = eventsearch.New(eventDB)
+		defer func() {
+			if startErr != nil {
+				if err := n.eventSearch.Close(); err != nil {
+					n.Logger.Error("Closing event search index", "err", err)
+				}
+				n.eventSearch = nil
+			}
+		}()
+		source, ok := n.stateStore.(sm.BootstrapStore)
+		if !ok {
+			return errors.New("event search requires a bootstrap state store")
+		}
+		searchState = source
+		state, err := source.Load()
+		if err != nil {
+			return err
+		}
+		ranges, err := n.eventSearch.Coverage()
+		if err != nil {
+			return err
+		}
+		if len(ranges) > 0 && ranges[len(ranges)-1].MaxHeight > state.LastBlockHeight {
+			return errors.New("event search index is ahead of committed state; rebuild the event index")
+		}
+		searchFirst = n.blockStore.Base()
+		if len(ranges) == 0 {
+			// Discover response-only history before consensus can write to the
+			// state DB's iterator domain. Existing indexes resume from coverage.
+			first, err := source.FirstRetainedABCIHeight(context.Background())
+			if err != nil {
+				return fmt.Errorf("locate retained ABCI responses: %w", err)
+			}
+			if first != 0 {
+				searchFirst = first
+			}
+		} else if first := ranges[0].MinHeight; searchFirst == 0 || first < searchFirst {
+			searchFirst = first
+		}
+	}
+
 	now := cmttime.Now()
 	genTime := n.genesisDoc.GenesisTime
 	if genTime.After(now) {
@@ -1188,6 +1245,10 @@ func (n *Node) OnStart() error {
 		}
 	}
 
+	if n.eventSearch != nil {
+		n.stopEventSearch = startEventSearch(searchState, n.blockStore, n.eventSearch, searchFirst, n.Logger.With("module", "eventsearch"))
+	}
+
 	return nil
 }
 
@@ -1236,6 +1297,14 @@ func (n *Node) OnStop() {
 			n.Logger.Error("Prometheus HTTP server Shutdown", "err", err)
 		}
 	}
+	if n.stopEventSearch != nil {
+		n.stopEventSearch()
+	}
+	if n.eventSearch != nil {
+		if err := n.eventSearch.Close(); err != nil {
+			n.Logger.Error("Closing event search index", "err", err)
+		}
+	}
 	if n.blockStore != nil {
 		n.Logger.Info("Closing blockstore")
 		if err := n.blockStore.Close(); err != nil {
@@ -1277,6 +1346,7 @@ func (n *Node) ConfigureRPC() error {
 		GenDoc:           n.genesisDoc,
 		TxIndexer:        n.txIndexer,
 		BlockIndexer:     n.blockIndexer,
+		EventSearch:      n.eventSearch,
 		ConsensusReactor: n.consensusReactor,
 		EventBus:         n.eventBus,
 		Mempool:          n.mempool,

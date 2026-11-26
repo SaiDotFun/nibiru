@@ -1228,6 +1228,9 @@ func TestStorageConfig() *StorageConfig {
 // TxIndexConfig defines the configuration for the transaction indexer,
 // including composite keys to index.
 type TxIndexConfig struct {
+	// EventSearch enables a separate index of stored ABCI events for event_search.
+	EventSearch bool `mapstructure:"event-search"`
+
 	// What indexer to use for transactions
 	//
 	// Options:

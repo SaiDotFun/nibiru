@@ -228,6 +228,23 @@ func TestMustParse(t *testing.T) {
 	assert.NotPanics(t, func() { query.MustParse("tm.events.type='NewBlock'") })
 }
 
+func TestUnicodeQueryTokens(t *testing.T) {
+	q := query.MustParse(`typed.event.名前 = '"José"' AND tx.height = 7`)
+	conditions, err := q.Conditions()
+	require.NoError(t, err)
+	require.Equal(t, []query.Condition{
+		{CompositeKey: "typed.event.名前", Op: query.OpEqual, Operand: `"José"`},
+		{CompositeKey: "tx.height", Op: query.OpEqual, Operand: big.NewInt(7)},
+	}, conditions)
+
+	matches, err := q.Matches(map[string][]string{
+		"typed.event.名前": {`"José"`},
+		"tx.height":      {"7"},
+	})
+	require.NoError(t, err)
+	require.True(t, matches)
+}
+
 func TestConditions(t *testing.T) {
 	txTime, err := time.Parse(time.RFC3339, "2013-05-03T14:45:00Z")
 	require.NoError(t, err)
@@ -244,6 +261,13 @@ func TestConditions(t *testing.T) {
 			s: "tm.events.type='NewBlock'",
 			conditions: []query.Condition{
 				{CompositeKey: "tm.events.type", Op: query.OpEqual, Operand: "NewBlock"},
+			},
+		},
+		{
+			s: `eth.evm.v1.EventEthereumTx.eth_hash = '"0x1234"' AND tx.height = 7`,
+			conditions: []query.Condition{
+				{CompositeKey: "eth.evm.v1.EventEthereumTx.eth_hash", Op: query.OpEqual, Operand: `"0x1234"`},
+				{CompositeKey: "tx.height", Op: query.OpEqual, Operand: big.NewInt(7)},
 			},
 		},
 		{
@@ -291,4 +315,21 @@ func TestConditions(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, tc.conditions, c)
 	}
+}
+
+func TestConditionsWithExactDecimals(t *testing.T) {
+	q := query.MustParse(`account.balance > 0.10000000000000000001 AND tx.height = 7`)
+	decimal, ok := new(big.Rat).SetString("0.10000000000000000001")
+	require.True(t, ok)
+
+	conditions, err := q.ConditionsWithExactDecimals()
+	require.NoError(t, err)
+	require.Equal(t, []query.Condition{
+		{CompositeKey: "account.balance", Op: query.OpGreater, Operand: decimal},
+		{CompositeKey: "tx.height", Op: query.OpEqual, Operand: big.NewInt(7)},
+	}, conditions)
+
+	conditions, err = q.Conditions()
+	require.NoError(t, err)
+	require.Equal(t, float64(0.1), conditions[0].Operand)
 }
