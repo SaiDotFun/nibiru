@@ -60,6 +60,7 @@ func TxCmd() *cobra.Command {
 		authcmd.GetBroadcastCommand(),
 		authcmd.GetEncodeCommand(),
 		authcmd.GetDecodeCommand(),
+		querySearchCmd(),
 	)
 
 	app.ModuleBasics.AddTxCommands(cmd)
@@ -88,6 +89,7 @@ var txHelpGroups = []helpGroup{
 		"sign", "sign-batch", "multi-sign", "multisign-batch",
 		"validate-signatures", "encode", "decode", "broadcast",
 	}},
+	{ID: "chain", Title: "Chain Data:", Names: []string{"search"}},
 }
 
 var queryHelpGroups = []helpGroup{

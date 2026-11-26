@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
 	"github.com/NibiruChain/nibiru/v2/app"
@@ -189,17 +190,19 @@ func TestQuerySearchBothFieldsWithEveryInput(t *testing.T) {
 		{"file", []string{"--file", path}},
 		{"stdin", []string{"--file", "-"}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := QueryCmd()
-			out := new(bytes.Buffer)
-			cmd.SetOut(out)
-			cmd.SetIn(strings.NewReader(document))
-			cmd.SetArgs(append([]string{"search", "--node", server.URL}, tc.args...))
-			require.NoError(t, cmd.ExecuteContext(t.Context()))
-			require.JSONEq(t, `{"data":{"transactions":{"totalCount":1},"events":{"nodes":[{"phase":"END_BLOCK"}]}}}`, out.String())
-		})
+		for _, parent := range []func() *cobra.Command{QueryCmd, TxCmd} {
+			cmd := parent()
+			t.Run(cmd.Name()+"/"+tc.name, func(t *testing.T) {
+				out := new(bytes.Buffer)
+				cmd.SetOut(out)
+				cmd.SetIn(strings.NewReader(document))
+				cmd.SetArgs(append([]string{"search", "--node", server.URL}, tc.args...))
+				require.NoError(t, cmd.ExecuteContext(t.Context()))
+				require.JSONEq(t, `{"data":{"transactions":{"totalCount":1},"events":{"nodes":[{"phase":"END_BLOCK"}]}}}`, out.String())
+			})
+		}
 	}
-	require.Equal(t, int32(6), calls.Load())
+	require.Equal(t, int32(12), calls.Load())
 }
 
 func TestQuerySearchInputFlags(t *testing.T) {
