@@ -882,7 +882,8 @@ paths:
         Join conditions with `AND`. Use `=`, `CONTAINS`, or `EXISTS` to match
         attributes, and `<`, `<=`, `>`, or `>=` for ranges. Quote text with
         single quotes. Unquoted decimals, `DATE YYYY-MM-DD`, and `TIME`
-        followed by an RFC3339 timestamp compare by value. Bounds on the same
+        followed by an RFC3339 timestamp compare by value, including values
+        stored as protobuf JSON strings. Bounds on the same
         attribute must match one value. For example, use
         `sample.balance >= 0.5 AND sample.balance < 2`. Use `tx.height` for
         the transaction's inclusion height and `event.attribute EXISTS` to

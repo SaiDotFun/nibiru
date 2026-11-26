@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
@@ -42,6 +43,16 @@ func CollectHistoricalRanges(conditions []query.Condition) (map[string]Historica
 		ranges[condition.CompositeKey] = r
 		indexes = append(indexes, i)
 	}
+	for key, r := range ranges {
+		if r.decimal {
+			for i, c := range r.conditions {
+				if integer, ok := c.Operand.(*big.Int); ok {
+					r.conditions[i].Operand = new(big.Rat).SetInt(integer)
+				}
+			}
+			ranges[key] = r
+		}
+	}
 	return ranges, indexes, nil
 }
 
@@ -67,6 +78,12 @@ func (r HistoricalRange) MatchWithTrimmedNumbers(value string) bool {
 
 // Match compares the stored value in the domain of the query operands.
 func (r HistoricalRange) Match(value string) bool {
+	// Protobuf events store each attribute as its JSON representation.
+	if (r.temporal || r.decimal) && strings.HasPrefix(value, `"`) {
+		if err := json.Unmarshal([]byte(value), &value); err != nil {
+			return false
+		}
+	}
 	switch {
 	case r.temporal:
 		layout := query.DateLayout
@@ -88,11 +105,7 @@ func (r HistoricalRange) Match(value string) bool {
 			return false
 		}
 		for _, c := range r.conditions {
-			bound, decimal := c.Operand.(*big.Rat)
-			if !decimal {
-				bound = new(big.Rat).SetInt(c.Operand.(*big.Int))
-			}
-			if !acceptComparison(c.Op, parsed.Cmp(bound)) {
+			if !acceptComparison(c.Op, parsed.Cmp(c.Operand.(*big.Rat))) {
 				return false
 			}
 		}
