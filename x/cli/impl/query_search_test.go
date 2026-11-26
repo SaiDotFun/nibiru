@@ -50,7 +50,7 @@ fragment TxFields on Transaction { where: height code }
 }`, `{
   "txs":[{"hash":"AB","height":"101","index":0,"tx_result":{
     "code":0,"events":[
-      {"type":"transfer","attributes":[{"key":"amount","value":"42unibi","index":true},{"key":"amount","value":"43unibi","index":true}]},
+      {"type":"transfer","attributes":[{"key":"sender","value":"alice","index":true},{"key":"amount","value":"42unibi","index":true},{"key":"amount","value":"43unibi","index":true}]},
       {"type":"transfer","attributes":[]}
     ]
   }}],
@@ -58,11 +58,13 @@ fragment TxFields on Transaction { where: height code }
 }`)
 	got, err := callSearchCommand(t, document, `{"from":100,"address":"nibi1é","count":5}`, server.URL)
 	require.NoError(t, err)
+	require.Contains(t, got, `"attributes":{"sender":"alice","amount":"42unibi"}`)
+	require.Contains(t, got, `"event":{"transfer":{"sender":"alice","amount":"42unibi"}}`)
 	require.JSONEq(t, `{
   "resultsTotalCount":1,
   "results":[
     {"where":101,"code":0,"events":[
-      {"type":"transfer","attributes":{"amount":"42unibi"},"event":{"transfer":{"amount":"42unibi"}}},
+      {"type":"transfer","attributes":{"sender":"alice","amount":"42unibi"},"event":{"transfer":{"sender":"alice","amount":"42unibi"}}},
       {"type":"transfer","attributes":{},"event":{"transfer":{}}}
     ]}
   ]
@@ -86,16 +88,18 @@ func TestQuerySearchEvents(t *testing.T) {
   "cursor":"cursor","limit":"2"
 }`, `{
   "events":[{
-    "height":"101","phase":"end_block","event_index":0,"type":"wasm",
-    "attributes":[{"key":"position","value":"","index":false},{"key":"position","value":"later","index":true}]
+    "height":"101","phase":"end_block","event_index":0,
+    "event":{"wasm":{"zebra":"first","position":""}}
   }],
   "coverage":[{"min_height":"101","max_height":"103"}]
 }`)
 	got, err := callSearchCommand(t, document, "{}", server.URL)
 	require.NoError(t, err)
+	require.Contains(t, got, `"attributes":{"zebra":"first","position":""}`)
+	require.Contains(t, got, `"event":{"wasm":{"zebra":"first","position":""}}`)
 	require.JSONEq(t, `{
   "events":[{"height":101,"phase":"END_BLOCK","txIndex":null,"txHash":null,"eventIndex":0,"type":"wasm",
-    "attributes":{"position":""},"event":{"wasm":{"position":""}}}],
+    "attributes":{"zebra":"first","position":""},"event":{"wasm":{"zebra":"first","position":""}}}],
   "eventsNextCursor":null,"eventsRange":[{"minHeight":101,"maxHeight":103}]
 }`, got)
 }
@@ -212,7 +216,7 @@ func TestQuerySearchBothFieldsWithEveryInput(t *testing.T) {
 		},
 		"event_search": {
 			`{"filter":{"min_height":"132","max_height":"132","attributes":[]},"limit":"20"}`,
-			`{"events":[{"height":"132","phase":"end_block","event_index":0,"type":"wasm","attributes":[]}],"coverage":[]}`,
+			`{"events":[{"height":"132","phase":"end_block","event_index":0,"event":{"wasm":{}}}],"coverage":[]}`,
 		},
 	})
 	path := filepath.Join(t.TempDir(), "search.graphql")

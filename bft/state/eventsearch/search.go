@@ -36,18 +36,6 @@ type AttributeFilter struct {
 	Exists       bool    `json:"exists,omitempty"`
 }
 
-// AttributeObject projects an ordered list for display. For historical events
-// with repeated keys, the first stored value wins. Filters still use the list.
-func AttributeObject(attrs []abci.EventAttribute) map[string]string {
-	result := make(map[string]string, len(attrs))
-	for _, attr := range attrs {
-		if _, exists := result[attr.Key]; !exists {
-			result[attr.Key] = attr.Value
-		}
-	}
-	return result
-}
-
 // ValidateAttributes checks that each attribute filter selects one operation.
 func ValidateAttributes(filters []AttributeFilter) error {
 	for _, f := range filters {

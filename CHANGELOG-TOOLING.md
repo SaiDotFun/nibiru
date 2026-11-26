@@ -17,6 +17,14 @@ patches from `release/v2.23`, independently of coordinated chain releases.
 
 ## Unreleased
 
+### Event Search
+
+- [#2974](https://github.com/SaiDotFun/nibiru/pull/2974) changes `event_search`
+  rows from `type` and an attribute list to a single type-keyed `event`
+  object. The RPC and CLI emit attribute members in chain order. Update the
+  search CLI and RPC consumers with the node. Raw block and transaction
+  results still carry ordered attributes and index flags.
+
 ### CLI
 
 - Rewrite the `nibid --help` output. It lists one `Commands`

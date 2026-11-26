@@ -48,8 +48,9 @@ The events field requires the node's event index.
 The CLI prints compact JSON. The nodes selection becomes a top-level array.
 Selected page metadata appears beside it, such as eventsNextCursor, eventsRange,
 and txsTotalCount. Aliases change the corresponding output names.
-Event output shows the first stored value for each key. Search filters can
-match a later occurrence. The txs field searches only indexed attributes.`,
+Event objects list attributes in emitted order and show the first stored
+value for each key. Search filters can match a later occurrence. The txs
+field searches only indexed attributes.`,
 		Example: fmt.Sprintf(`  # Get transaction hashes and result codes at block height 132.
   nibiru %[1]s search --gql '{
     txs(where: {height: {gte: 132, lte: 132}}) {
@@ -447,7 +448,7 @@ func querySearchTransactions(ctx context.Context, rpc rpcclient.Caller, where []
 			attributes := eventsearch.AttributeObject(event.Attributes)
 			events = append(events, map[string]any{
 				"type": event.Type, "attributes": attributes,
-				"event": map[string]map[string]string{event.Type: attributes},
+				"event": map[string]eventsearch.OrderedAttributes{event.Type: attributes},
 			})
 		}
 		nodes = append(nodes, map[string]any{
@@ -481,7 +482,7 @@ func querySearchEvents(ctx context.Context, rpc rpcclient.Caller, where []byte, 
 	if cursor, ok := args["after"].(string); ok {
 		params["cursor"] = cursor
 	}
-	var result eventsearch.Page
+	var result eventsearch.ObjectPage
 	if _, err := rpc.Call(ctx, "event_search", params, &result); err != nil {
 		return nil, err
 	}
@@ -492,12 +493,16 @@ func querySearchEvents(ctx context.Context, rpc rpcclient.Caller, where []byte, 
 		if event.TxHash != "" {
 			hash = event.TxHash
 		}
-		attributes := eventsearch.AttributeObject(event.Attributes)
-		nodes = append(nodes, map[string]any{
-			"height": event.Height, "phase": strings.ToUpper(event.Phase), "txIndex": event.TxIndex,
-			"txHash": hash, "eventIndex": event.EventIndex, "type": event.Type,
-			"attributes": attributes, "event": map[string]map[string]string{event.Type: attributes},
-		})
+		if len(event.Event) != 1 {
+			return nil, errors.New("event_search rows must contain one keyed event object")
+		}
+		for typ, attributes := range event.Event {
+			nodes = append(nodes, map[string]any{
+				"height": event.Height, "phase": strings.ToUpper(event.Phase), "txIndex": event.TxIndex,
+				"txHash": hash, "eventIndex": event.EventIndex, "type": typ,
+				"attributes": attributes, "event": event.Event,
+			})
+		}
 	}
 	coverage := make([]map[string]any, 0, len(result.Coverage))
 	for _, interval := range result.Coverage {

@@ -29,6 +29,7 @@ func TestEventSearchHTTP(t *testing.T) {
 	blockEvent := abci.Event{
 		Type: "wasm",
 		Attributes: []abci.EventAttribute{
+			{Key: "zebra", Value: "first"},
 			{Key: "action", Value: "", Index: true},
 			{Key: "action", Value: "settle"},
 		},
@@ -47,7 +48,6 @@ func TestEventSearchHTTP(t *testing.T) {
 		params, want string
 	}{
 		{`,"params":{"filter":{"min_height":"9","max_height":"9","phases":["end_block"],"type":"wasm","attributes":[{"key":"action","eq":"settle"}]}} `, `"phase":"end_block"`},
-		{`,"params":{"filter":{},"event_format":"unsupported"}`, `unknown event_format`},
 		{"", "event_search requires a filter"},
 	} {
 		body := `{"jsonrpc":"2.0","id":1,"method":"event_search"` + tc.params + "}"
@@ -69,17 +69,12 @@ func TestEventSearchHTTP(t *testing.T) {
 		return response.Result
 	}
 	filter := `"filter":{"type":"wasm","attributes":[{"key":"action","eq":"settle"}]},"limit":"1"`
-	legacy := call(`{` + filter + `}`)
-	list := call(`{` + filter + `,"event_format":"list"}`)
-	require.Equal(t, legacy, list)
-	require.JSONEq(t, `[{"height":"9","phase":"begin_block","event_index":0,"type":"wasm","attributes":[{"key":"action","value":"","index":true},{"key":"action","value":"settle","index":false}]}]`, string(legacy["events"]))
-	object := call(`{` + filter + `,"event_format":"object"}`)
-	require.JSONEq(t, `[{"height":"9","phase":"begin_block","event_index":0,"event":{"wasm":{"action":""}}}]`, string(object["events"]))
+	object := call(`{` + filter + `}`)
+	require.Equal(t, `[{"height":"9","phase":"begin_block","event_index":0,"event":{"wasm":{"zebra":"first","action":""}}}]`, string(object["events"]))
 	require.NotEmpty(t, object["next_cursor"])
-	require.Equal(t, legacy["next_cursor"], object["next_cursor"])
-	require.Equal(t, legacy["coverage"], object["coverage"])
-	next := call(`{` + filter + `,"event_format":"object","cursor":` + string(legacy["next_cursor"]) + `}`)
-	require.JSONEq(t, fmt.Sprintf(`[{"height":"9","phase":"tx","tx_index":0,"tx_hash":"%X","event_index":0,"event":{"wasm":{"action":""}}}]`, tx.Hash()), string(next["events"]))
-	empty := call(`{"filter":{"type":"empty"},"event_format":"object"}`)
+	require.JSONEq(t, `[{"min_height":"9","max_height":"9"}]`, string(object["coverage"]))
+	next := call(`{` + filter + `,"cursor":` + string(object["next_cursor"]) + `}`)
+	require.Equal(t, fmt.Sprintf(`[{"height":"9","phase":"tx","tx_index":0,"tx_hash":"%X","event_index":0,"event":{"wasm":{"zebra":"first","action":""}}}]`, tx.Hash()), string(next["events"]))
+	empty := call(`{"filter":{"type":"empty"}}`)
 	require.JSONEq(t, `[{"height":"9","phase":"end_block","event_index":1,"event":{"empty":{}}}]`, string(empty["events"]))
 }
