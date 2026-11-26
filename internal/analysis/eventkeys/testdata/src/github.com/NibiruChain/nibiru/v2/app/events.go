@@ -50,3 +50,10 @@ func raw(e renamed.Event, origin abci.Event) {
 	clear(e.Attributes)                                         // want "instead of mutating raw event attributes"
 	_ = &e.Attributes[0]                                        // want "instead of mutating raw event attributes"
 }
+
+func mutateRawAttributes(origin *abci.Event, embedded struct{ renamed.Event }, other struct{ Attributes []string }) {
+	origin.GetAttributes()[1].Key = origin.GetAttributes()[0].Key // want "instead of mutating raw event attributes"
+	embedded.Attributes[1].Key = embedded.Attributes[0].Key       // want "instead of mutating raw event attributes"
+	_ = origin.GetAttributes()[0].Key
+	other.Attributes[0] = "unrelated"
+}

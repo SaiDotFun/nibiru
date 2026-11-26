@@ -231,11 +231,19 @@ func checkAttributeWrite(pass *analysis.Pass, target ast.Expr) {
 	for target != nil {
 		switch expr := ast.Unparen(target).(type) {
 		case *ast.SelectorExpr:
-			if expr.Sel.Name == "Attributes" && isRawEvent(pass.TypesInfo.TypeOf(expr.X)) {
+			if selectsRawAttributes(pass.TypesInfo, expr) {
 				pass.Reportf(expr.Pos(), "set attributes during event construction instead of mutating raw event attributes")
 				return
 			}
 			target = expr.X
+		case *ast.CallExpr:
+			fn := function(pass.TypesInfo, expr.Fun)
+			if fn != nil && fn.Name() == "GetAttributes" {
+				if recv := fn.Signature().Recv(); recv != nil && isRawEvent(recv.Type()) {
+					pass.Reportf(expr.Pos(), "set attributes during event construction instead of mutating raw event attributes")
+				}
+			}
+			return
 		case *ast.IndexExpr:
 			target = expr.X
 		case *ast.SliceExpr:
@@ -246,6 +254,23 @@ func checkAttributeWrite(pass *analysis.Pass, target ast.Expr) {
 			return
 		}
 	}
+}
+
+func selectsRawAttributes(info *types.Info, expr *ast.SelectorExpr) bool {
+	selection := info.Selections[expr]
+	if expr.Sel.Name != "Attributes" || selection == nil || selection.Kind() != types.FieldVal {
+		return false
+	}
+	owner := selection.Recv()
+	path := selection.Index()
+	// Follow embedded fields to the type that declares Attributes.
+	for _, index := range path[:len(path)-1] {
+		if ptr, ok := owner.Underlying().(*types.Pointer); ok {
+			owner = ptr.Elem()
+		}
+		owner = owner.Underlying().(*types.Struct).Field(index).Type()
+	}
+	return isRawEvent(owner)
 }
 
 type rawUse int
