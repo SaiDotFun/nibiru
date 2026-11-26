@@ -6,6 +6,7 @@ RUN ln -s /usr/lib/llvm*/bin/llvm-config /usr/local/bin/llvm-config
 WORKDIR /nibiru
 COPY lib/wasmer lib/wasmer
 COPY lib/cosmwasm-vm lib/cosmwasm-vm
+COPY lib/cosmwasm-std lib/cosmwasm-std
 COPY lib/wasmvm/libwasmvm lib/wasmvm/libwasmvm
 COPY rust-toolchain.toml rust-toolchain.toml
 ARG TARGETARCH

@@ -50,6 +50,7 @@ jobs:
               - "lib/wasmvm/**"
               - "lib/wasmer/**"
               - "lib/cosmwasm-vm/**"
+              - "lib/cosmwasm-std/**"
               - "go.mod"
               - "go.sum"
               - "justfile"
