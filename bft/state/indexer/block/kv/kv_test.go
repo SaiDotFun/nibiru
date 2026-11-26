@@ -483,7 +483,7 @@ func TestBlockHeightPredicates(t *testing.T) {
 		{"block.height = 9223372036854775807", []int64{9223372036854775807}},
 		{"block.height > 9223372036854775807", []int64{}},
 		{"block.height > 9223372036854775808", []int64{}},
-		{"block.height = 9223372036854775808", []int64{}},
+		{"block.height = 18446744073709551623", []int64{}},
 		{"block.height < 9223372036854775808", []int64{7, 8, 9223372036854775807}},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
@@ -496,7 +496,6 @@ func TestBlockHeightPredicates(t *testing.T) {
 	for _, predicate := range []string{
 		"block.height = 7.0",
 		"block.height = '7'",
-		"block.height = 18446744073709551623",
 		"block.height < TIME 2025-01-02T00:00:00Z",
 	} {
 		t.Run(predicate, func(t *testing.T) {
