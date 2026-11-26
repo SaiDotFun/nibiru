@@ -166,6 +166,7 @@ jobs:
             event-keys:
               - "**/*.go"
               - "evm/embeds/**"
+              - "internal/analysis/testdata/**"
               - "go.mod"
               - "go.sum"
               - "justfile"

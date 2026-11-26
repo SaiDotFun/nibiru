@@ -342,10 +342,11 @@ func TestDispatchSubmessages(t *testing.T) {
 						sdk.NewEvent("message", sdk.NewAttribute("_contract_address", contractAddr.String())),
 						// we don't know what the contarctAddr will be so we can't use it in the final tests
 						sdk.NewEvent("execute", sdk.NewAttribute("_contract_address", "placeholder-random-addr")),
-						sdk.NewEvent("wasm",
-							sdk.NewAttribute("random", "first"),
-							sdk.NewAttribute("other", "data"),
-							sdk.NewAttribute("random", "second")),
+						sdk.Event{Type: "wasm", Attributes: []abci.EventAttribute{
+							{Key: "random", Value: "first"},
+							{Key: "other", Value: "data"},
+							{Key: "random", Value: "second"},
+						}},
 					}
 					return events, [][]byte{[]byte("subData")}, nil
 				},
@@ -354,10 +355,11 @@ func TestDispatchSubmessages(t *testing.T) {
 			expCommits: []bool{true},
 			expEvents: []sdk.Event{
 				sdk.NewEvent("execute", sdk.NewAttribute("_contract_address", "placeholder-random-addr")),
-				sdk.NewEvent("wasm",
-					sdk.NewAttribute("other", "data"),
-					sdk.NewAttribute("random", "first"),
-					sdk.NewAttribute("random", "second")),
+				sdk.Event{Type: "wasm", Attributes: []abci.EventAttribute{
+					{Key: "other", Value: "data"},
+					{Key: "random", Value: "first"},
+					{Key: "random", Value: "second"},
+				}},
 				sdk.NewEvent("wasm-reply"),
 			},
 		},

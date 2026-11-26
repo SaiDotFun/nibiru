@@ -193,10 +193,10 @@ func (k BaseKeeper) DelegateCoins(ctx sdk.Context, delegatorAddr, moduleAccAddr 
 		types.NewCoinSpentEvent(delegatorAddr, amt),
 	)
 	ctx.EventManager().EmitEvent(
-		types.NewEventWeiChangeWithUniqueKeys(
-			types.WeiChangeDelegateCoins,
+		types.NewEventWeiChange(
+			types.WeiChangeReason_DelegateCoins,
 			moduleAcc.String(), delegatorAddr.String(),
-		).ToEvent(),
+		),
 	)
 
 	err := k.addCoins(ctx, moduleAccAddr, amt)
@@ -238,10 +238,10 @@ func (k BaseKeeper) UndelegateCoins(ctx sdk.Context, moduleAccAddr, delegatorAdd
 
 	if hasWeiChange, _ := amt.Find(DENOM_UNIBI); hasWeiChange {
 		ctx.EventManager().EmitEvent(
-			types.NewEventWeiChangeWithUniqueKeys(
-				types.WeiChangeUndelegateCoins,
+			types.NewEventWeiChange(
+				types.WeiChangeReason_UndelegateCoins,
 				moduleAcc.String(), delegatorAddr.String(),
-			).ToEvent(),
+			),
 		)
 	}
 
@@ -466,8 +466,8 @@ func (k BaseKeeper) MintCoins(ctx sdk.Context, moduleName string, amounts sdk.Co
 	)
 	if hasWeiChange, _ := amounts.Find(DENOM_UNIBI); hasWeiChange {
 		ctx.EventManager().EmitEvent(
-			types.NewEventWeiChangeWithUniqueKeys(
-				types.WeiChangeMintCoins, acc.GetAddress().String()).ToEvent(),
+			types.NewEventWeiChange(
+				types.WeiChangeReason_MintCoins, acc.GetAddress().String()),
 		)
 	}
 
@@ -506,8 +506,8 @@ func (k BaseKeeper) BurnCoins(ctx sdk.Context, moduleName string, amounts sdk.Co
 	)
 	if hasWeiChange, _ := amounts.Find(DENOM_UNIBI); hasWeiChange {
 		ctx.EventManager().EmitEvent(
-			types.NewEventWeiChangeWithUniqueKeys(
-				types.WeiChangeBurnCoins, acc.GetAddress().String()).ToEvent(),
+			types.NewEventWeiChange(
+				types.WeiChangeReason_BurnCoins, acc.GetAddress().String()),
 		)
 	}
 

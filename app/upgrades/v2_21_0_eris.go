@@ -89,7 +89,7 @@ func (h Handler_v2_21) recoverErisV221(ctx sdk.Context, nibiru *keepers.PublicKe
 	if err != nil {
 		attrs = append(attrs, sdk.NewAttribute("error", err.Error()))
 	}
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys("eris_recovery", attrs...))
+	ctx.EventManager().EmitEvent(sdk.NewEvent("eris_recovery", attrs...))
 	return err
 }
 

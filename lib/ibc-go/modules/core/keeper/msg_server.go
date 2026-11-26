@@ -5,6 +5,7 @@ import (
 
 	metrics "github.com/armon/go-metrics"
 
+	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	"github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/telemetry"
 	sdk "github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/types"
 	sdkerrors "github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/types/errors"
@@ -694,7 +695,8 @@ func (k Keeper) Acknowledgement(goCtx context.Context, msg *channeltypes.MsgAckn
 }
 
 // convertToErrorEvents converts all events to error events by appending the
-// error attribute prefix to each event's attribute key.
+// error attribute prefix to the event type and attribute keys. It preserves
+// the order and multiplicity of attributes received from the application.
 func convertToErrorEvents(events sdk.Events) sdk.Events {
 	if events == nil {
 		return nil
@@ -702,12 +704,15 @@ func convertToErrorEvents(events sdk.Events) sdk.Events {
 
 	newEvents := make(sdk.Events, len(events))
 	for i, event := range events {
-		newAttributes := make([]sdk.Attribute, len(event.Attributes))
-		for j, attribute := range event.Attributes {
-			newAttributes[j] = sdk.NewAttribute(coretypes.ErrorAttributeKeyPrefix+attribute.Key, attribute.Value)
+		var attrs []abci.EventAttribute
+		if len(event.Attributes) != 0 {
+			attrs = make([]abci.EventAttribute, len(event.Attributes))
+			for j, attr := range event.Attributes {
+				attrs[j] = abci.EventAttribute{Key: coretypes.ErrorAttributeKeyPrefix + attr.Key, Value: attr.Value}
+			}
 		}
 
-		newEvents[i] = sdk.NewEvent(coretypes.ErrorAttributeKeyPrefix+event.Type, newAttributes...)
+		newEvents[i] = sdk.Event{Type: coretypes.ErrorAttributeKeyPrefix + event.Type, Attributes: attrs}
 	}
 
 	return newEvents

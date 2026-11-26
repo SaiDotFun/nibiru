@@ -93,7 +93,7 @@ func (k Keeper) EditWasmBlockHooksContract(
 		return nil, err
 	}
 	k.WasmBlockHooksContract.Set(ctx, contractAddr)
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		sudo.EventTypeWasmBlockHooksContractUpdate,
 		sdk.NewAttribute(sudo.AttributeKeyWasmBlockHooksContract, contractAddr),
 	))

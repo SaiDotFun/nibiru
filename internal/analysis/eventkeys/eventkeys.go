@@ -22,8 +22,8 @@ var Analyzer = &analysis.Analyzer{
 	Name: "eventkeys",
 	Doc: `check unique attribute keys and use of event constructors in Nibiru-owned code
 
-The analyzer checks production code for repeated constant keys in constructor
-arguments, raw event constructors, and direct writes to event attributes.
+The analyzer checks production code for repeated constant keys in sdk.NewEvent
+calls, raw event construction, and direct writes to event attributes.
 Use -audit to also list arguments whose keys are not visible at the call site.`,
 	Run: run,
 }
@@ -46,12 +46,16 @@ func run(pass *analysis.Pass) (any, error) {
 			switch node := node.(type) {
 			case *ast.Ident:
 				fn, _ := pass.TypesInfo.Uses[node].(*types.Func)
-				checkFunctionReference(pass, node, fn, stack)
+				if fn != nil && fn.Name() == "AppendAttributes" {
+					if recv := fn.Signature().Recv(); recv != nil && isRawEvent(recv.Type()) {
+						pass.Reportf(node.Pos(), "pass attributes to sdk.NewEvent instead of calling AppendAttributes")
+					}
+				}
 			case *ast.CallExpr:
 				checkCall(pass, node, stack)
 			case *ast.CompositeLit:
 				if isRawEvent(pass.TypesInfo.TypeOf(node)) && compatibilityUse(pass, stack) != rawLiteral {
-					pass.Reportf(node.Pos(), "construct Nibiru-owned events with sdk.NewEventWithUniqueKeys")
+					pass.Reportf(node.Pos(), "construct Nibiru-owned events with sdk.NewEvent")
 				}
 			case *ast.AssignStmt:
 				for _, target := range node.Lhs {
@@ -86,30 +90,8 @@ func ownsEvents(path string) bool {
 }
 
 func isSDKFunction(fn *types.Func, name string) bool {
-	return isPackageFunction(fn, sdkPath, name)
-}
-
-func isPackageFunction(fn *types.Func, path, name string) bool {
-	return fn != nil && fn.Pkg() != nil && fn.Pkg().Path() == path && fn.Name() == name &&
+	return fn != nil && fn.Pkg() != nil && fn.Pkg().Path() == sdkPath && fn.Name() == name &&
 		fn.Signature().Recv() == nil
-}
-
-func checkFunctionReference(pass *analysis.Pass, ident *ast.Ident, fn *types.Func, stack []ast.Node) {
-	if fn == nil {
-		return
-	}
-	switch {
-	case isPackageFunction(fn, bankPath, "NewEventWeiChange"):
-		pass.Reportf(ident.Pos(), "use NewEventWeiChangeWithUniqueKeys for Nibiru-owned wei_change events")
-	case isSDKFunction(fn, "NewEvent"):
-		if compatibilityUse(pass, stack) != rawConstructor {
-			pass.Reportf(ident.Pos(), "use sdk.NewEventWithUniqueKeys instead of NewEvent for Nibiru-owned events")
-		}
-	case fn.Name() == "AppendAttributes":
-		if recv := fn.Signature().Recv(); recv != nil && isRawEvent(recv.Type()) {
-			pass.Reportf(ident.Pos(), "pass attributes to sdk.NewEventWithUniqueKeys instead of calling AppendAttributes")
-		}
-	}
 }
 
 func isRawEvent(t types.Type) bool {
@@ -160,11 +142,7 @@ func checkCall(pass *analysis.Pass, call *ast.CallExpr, stack []ast.Node) {
 		return
 	}
 
-	fn := function(pass.TypesInfo, call.Fun)
-	if !isSDKFunction(fn, "NewEventWithUniqueKeys") && !isSDKFunction(fn, "NewEvent") {
-		return
-	}
-	if isSDKFunction(fn, "NewEvent") && compatibilityUse(pass, stack) == rawConstructor {
+	if !isSDKFunction(function(pass.TypesInfo, call.Fun), "NewEvent") {
 		return
 	}
 	attrs := call.Args[1:]
@@ -281,7 +259,6 @@ type rawUse int
 
 const (
 	noRawUse rawUse = iota
-	rawConstructor
 	rawConversion
 	rawLiteral
 )
@@ -297,8 +274,8 @@ func compatibilityUse(pass *analysis.Pass, stack []ast.Node) rawUse {
 		fn := pass.TypesInfo.Defs[decl.Name].(*types.Func)
 		switch pass.Pkg.Path() {
 		case modulePath + "x/wasm/keeper":
-			if fn.Signature().Recv() == nil && (fn.Name() == "newWasmModuleEvent" || fn.Name() == "newCustomEvents") {
-				return rawConstructor
+			if fn.Name() == "newContractEvent" && fn.Signature().Recv() == nil {
+				return rawLiteral
 			}
 			if isDispatchMsg(fn) {
 				return rawConversion
@@ -310,15 +287,6 @@ func compatibilityUse(pass *analysis.Pass, stack []ast.Node) rawUse {
 		case modulePath + "x/nutil/testutil":
 			if fn.Name() == "RequireContainsTypedEvent" && fn.Signature().Recv() == nil {
 				return rawLiteral
-			}
-		case bankPath:
-			if fn.Signature().Recv() == nil {
-				switch fn.Name() {
-				case "NewCoinSpentEvent", "NewCoinReceivedEvent", "NewCoinMintEvent", "NewCoinBurnEvent",
-					"NewEventWeiChange":
-					// Preserve the upstream constructors and the legacy wei_change entry point.
-					return rawConstructor
-				}
 			}
 		}
 		return noRawUse

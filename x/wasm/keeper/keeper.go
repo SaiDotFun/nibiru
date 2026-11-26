@@ -200,7 +200,7 @@ func (k Keeper) create(
 	codeInfo := types.NewCodeInfo(checksum, creator, *instantiateAccess)
 	k.storeCodeInfo(ctx, codeID, codeInfo)
 
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeStoreCode,
 		sdk.NewAttribute(types.AttributeKeyChecksum, hex.EncodeToString(checksum)),
 		sdk.NewAttribute(types.AttributeKeyCodeID, strconv.FormatUint(codeID, 10)), // last element to be compatible with scripts
@@ -363,7 +363,7 @@ func (k Keeper) instantiate(
 	k.appendToContractHistory(ctx, contractAddress, historyEntry)
 	k.storeContractInfo(ctx, contractAddress, &contractInfo)
 
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeInstantiate,
 		sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddress.String()),
 		sdk.NewAttribute(types.AttributeKeyCodeID, strconv.FormatUint(codeID, 10)),
@@ -413,7 +413,7 @@ func (k Keeper) execute(
 		return nil, sdkioerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
 	}
 
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeExecute,
 		sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddress.String()),
 	))
@@ -496,7 +496,7 @@ func (k Keeper) migrate(
 	k.addToContractCodeSecondaryIndex(ctx, contractAddress, historyEntry)
 	k.storeContractInfo(ctx, contractAddress, contractInfo)
 
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeMigrate,
 		sdk.NewAttribute(types.AttributeKeyCodeID, strconv.FormatUint(newCodeID, 10)),
 		sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddress.String()),
@@ -555,7 +555,7 @@ func (k Keeper) sudo(ctx sdk.Context, contractAddress sdk.AccAddress, msg []byte
 		return nil, sdkioerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
 	}
 
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeSudo,
 		sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddress.String()),
 	))
@@ -596,7 +596,7 @@ func (k Keeper) reply(
 		return nil, sdkioerrors.Wrap(types.ErrExecuteFailed, execErr.Error())
 	}
 
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeReply,
 		sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddress.String()),
 	))
@@ -662,7 +662,7 @@ func (k Keeper) setContractAdmin(ctx sdk.Context, contractAddress, caller, newAd
 	newAdminStr := newAdmin.String()
 	contractInfo.Admin = newAdminStr
 	k.storeContractInfo(ctx, contractAddress, contractInfo)
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeUpdateContractAdmin,
 		sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddress.String()),
 		sdk.NewAttribute(types.AttributeKeyNewAdmin, newAdminStr),
@@ -681,7 +681,7 @@ func (k Keeper) setContractLabel(ctx sdk.Context, contractAddress, caller sdk.Ac
 	}
 	contractInfo.Label = newLabel
 	k.storeContractInfo(ctx, contractAddress, contractInfo)
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeUpdateContractLabel,
 		sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddress.String()),
 		sdk.NewAttribute(types.AttributeKeyNewLabel, newLabel),
@@ -963,7 +963,7 @@ func (k Keeper) pinCode(ctx sdk.Context, codeID uint64) error {
 	// store 1 byte to not run into `nil` debugging issues
 	store.Set(types.GetPinnedCodeIndexPrefix(codeID), []byte{1})
 
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypePinCode,
 		sdk.NewAttribute(types.AttributeKeyCodeID, strconv.FormatUint(codeID, 10)),
 	))
@@ -983,7 +983,7 @@ func (k Keeper) unpinCode(ctx sdk.Context, codeID uint64) error {
 	store := ctx.KVStore(k.storeKey)
 	store.Delete(types.GetPinnedCodeIndexPrefix(codeID))
 
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeUnpinCode,
 		sdk.NewAttribute(types.AttributeKeyCodeID, strconv.FormatUint(codeID, 10)),
 	))
@@ -1049,7 +1049,7 @@ func (k Keeper) setAccessConfig(ctx sdk.Context, codeID uint64, caller sdk.AccAd
 	if addrs := newConfig.AllAuthorizedAddresses(); len(addrs) != 0 {
 		attrs = append(attrs, sdk.NewAttribute(types.AttributeKeyAuthorizedAddresses, strings.Join(addrs, ",")))
 	}
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(types.EventTypeUpdateCodeAccessConfig, attrs...))
+	ctx.EventManager().EmitEvent(sdk.NewEvent(types.EventTypeUpdateCodeAccessConfig, attrs...))
 	return nil
 }
 

@@ -55,8 +55,7 @@ func (em *EventManager) TruncateEvents(mark int) int {
 	return len(em.events)
 }
 
-// EmitEvent stores a single Event object.
-// Deprecated: Use EmitTypedEvent
+// EmitEvent stores a single Event with its existing attribute order and values.
 func (em *EventManager) EmitEvent(event Event) {
 	em.events = em.events.AppendEvent(event)
 }
@@ -180,29 +179,12 @@ type (
 	Events []Event
 )
 
-// NewEvent creates a new Event object with a given type and slice of one or more
-// attributes.
+// NewEvent constructs an event with one attribute per key. A repeated key
+// keeps its first position and takes its last value.
 func NewEvent(ty string, attrs ...Attribute) Event {
-	e := Event{Type: ty}
-
-	for _, attr := range attrs {
-		e.Attributes = append(e.Attributes, attr.ToKVPair())
-	}
-
-	return e
-}
-
-// EventWithUniqueKeys holds one value per attribute key within an event.
-// Multiple events can share a type and attribute keys.
-type EventWithUniqueKeys struct {
-	event Event
-}
-
-// NewEventWithUniqueKeys keeps the first position and last value of each key.
-func NewEventWithUniqueKeys(ty string, attrs ...Attribute) EventWithUniqueKeys {
 	event := Event{Type: ty}
 	if len(attrs) == 0 {
-		return EventWithUniqueKeys{event: event}
+		return event
 	}
 	event.Attributes = make([]abci.EventAttribute, 0, len(attrs))
 	positions := make(map[string]int, len(attrs))
@@ -214,19 +196,7 @@ func NewEventWithUniqueKeys(ty string, attrs ...Attribute) EventWithUniqueKeys {
 		positions[attr.Key] = len(event.Attributes)
 		event.Attributes = append(event.Attributes, attr.ToKVPair())
 	}
-	return EventWithUniqueKeys{event: event}
-}
-
-// ToEvent returns a copy in the existing SDK event format.
-func (e EventWithUniqueKeys) ToEvent() Event {
-	event := e.event
-	event.Attributes = slices.Clone(event.Attributes)
 	return event
-}
-
-// EmitEventWithUniqueKeys appends an event to the existing event stream.
-func (em *EventManager) EmitEventWithUniqueKeys(event EventWithUniqueKeys) {
-	em.EmitEvent(event.ToEvent())
 }
 
 // NewAttribute returns a new key/value Attribute object.

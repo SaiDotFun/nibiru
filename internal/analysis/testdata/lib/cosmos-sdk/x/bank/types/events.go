@@ -6,10 +6,9 @@ func NewEventWeiChange(reason sdk.Attribute) sdk.Event { return sdk.NewEvent("we
 
 func NewCoinSpentEvent() sdk.Event { return sdk.NewEvent("coin_spent") }
 
-func NewEventWeiChangeWithUniqueKeys(reason string) sdk.EventWithUniqueKeys {
-	return sdk.NewEventWithUniqueKeys("wei_change", sdk.NewAttribute("reason", reason))
-}
-
 func newEvent() sdk.Event {
-	return sdk.NewEvent("new") // want "use sdk.NewEventWithUniqueKeys instead of NewEvent"
+	return sdk.NewEvent("new",
+		sdk.NewAttribute("reason", "a"),
+		sdk.NewAttribute("reason", "b"), // want `duplicate event attribute key "reason"`
+	)
 }

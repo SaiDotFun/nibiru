@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	sdk "github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/types"
 
 	"github.com/NibiruChain/nibiru/v2/lib/ibc-go/modules/core/keeper"
@@ -66,16 +67,16 @@ func TestConvertToErrorEvents(t *testing.T) {
 		{
 			"success: repeated attributes preserve value order",
 			func() {
-				events = sdk.Events{sdk.NewEvent("testevent",
-					sdk.NewAttribute("label", "first"),
-					sdk.NewAttribute("other", "middle"),
-					sdk.NewAttribute("label", "second"),
-				)}
-				expEvents = sdk.Events{sdk.NewEvent(types.ErrorAttributeKeyPrefix+"testevent",
-					sdk.NewAttribute(types.ErrorAttributeKeyPrefix+"label", "first"),
-					sdk.NewAttribute(types.ErrorAttributeKeyPrefix+"other", "middle"),
-					sdk.NewAttribute(types.ErrorAttributeKeyPrefix+"label", "second"),
-				)}
+				events = sdk.Events{sdk.Event{Type: "testevent", Attributes: []abci.EventAttribute{
+					{Key: "label", Value: "first"},
+					{Key: "other", Value: "middle"},
+					{Key: "label", Value: "second"},
+				}}}
+				expEvents = sdk.Events{sdk.Event{Type: types.ErrorAttributeKeyPrefix + "testevent", Attributes: []abci.EventAttribute{
+					{Key: types.ErrorAttributeKeyPrefix + "label", Value: "first"},
+					{Key: types.ErrorAttributeKeyPrefix + "other", Value: "middle"},
+					{Key: types.ErrorAttributeKeyPrefix + "label", Value: "second"},
+				}}}
 			},
 		},
 		{

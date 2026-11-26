@@ -12,6 +12,7 @@ import (
 	wasmvm "github.com/NibiruChain/nibiru/v2/lib/wasmvm"
 	"github.com/NibiruChain/nibiru/v2/lib/wasmvm/wvm"
 
+	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	sdk "github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/types"
 
 	"github.com/NibiruChain/nibiru/v2/x/wasm/keeper/wasmtesting"
@@ -408,10 +409,11 @@ func TestOnRecvPacket(t *testing.T) {
 				sdk.NewEvent(types.WasmModuleEventType,
 					sdk.NewAttribute(types.AttributeKeyContractAddr, example.Contract.String()),
 					sdk.NewAttribute("Foo", "Bar")),
-				sdk.NewEvent("wasm-custom",
-					sdk.NewAttribute(types.AttributeKeyContractAddr, example.Contract.String()),
-					sdk.NewAttribute("message", "to rudi"),
-					sdk.NewAttribute("message", "to sophia")),
+				sdk.Event{Type: "wasm-custom", Attributes: []abci.EventAttribute{
+					{Key: types.AttributeKeyContractAddr, Value: example.Contract.String()},
+					{Key: "message", Value: "to rudi"},
+					{Key: "message", Value: "to sophia"},
+				}},
 			},
 			expAck: []byte("myAck"),
 		},

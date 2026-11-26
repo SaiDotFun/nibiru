@@ -159,8 +159,8 @@ func (h Hooks) AfterEpochEnd(ctx sdk.Context, epochIdentifier string, epochNumbe
 		}
 	}()
 
-	ctx.EventManager().EmitEventWithUniqueKeys(
-		sdk.NewEventWithUniqueKeys(
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
 			mint.EventTypeInflation,
 			sdk.NewAttribute(mint.AttributeEpochNumber, fmt.Sprintf("%d", epochNumber-numSkippedEpochs)),
 			sdk.NewAttribute(mint.AttributeKeyEpochProvisions, epochMintProvision.String()),

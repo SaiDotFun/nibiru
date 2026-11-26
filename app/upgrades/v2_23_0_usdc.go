@@ -161,11 +161,11 @@ func usdcSummaryV223(ctx sdk.Context, cfg USDCMigrationConfigV223, status, reaso
 		sdk.NewAttribute("token", cfg.Token.Hex()), sdk.NewAttribute("denom", cfg.BankDenom),
 		sdk.NewAttribute("safe", cfg.Safe.Hex()), sdk.NewAttribute("reason", reason),
 	}
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys("usdc_migration", append(attributes, extra...)...))
+	ctx.EventManager().EmitEvent(sdk.NewEvent("usdc_migration", append(attributes, extra...)...))
 }
 
 func usdcAccountV223(ctx sdk.Context, cfg USDCMigrationConfigV223, representation, source, amount, disposition, status, reason string) {
-	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys("usdc_migration_account",
+	ctx.EventManager().EmitEvent(sdk.NewEvent("usdc_migration_account",
 		sdk.NewAttribute("upgrade", "v2.23.0"), sdk.NewAttribute("representation", representation),
 		sdk.NewAttribute("source", source), sdk.NewAttribute("destination", cfg.Safe.Hex()),
 		sdk.NewAttribute("amount", amount), sdk.NewAttribute("disposition", disposition),
@@ -579,7 +579,7 @@ func ReadUSDCHolderSet(
 		}
 		for _, address := range page.Addresses {
 			if len(address) != 42 || !gethcommon.IsHexAddress(address) || !strings.EqualFold(address[:2], "0x") {
-				ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys("usdc_migration_candidate_skipped",
+				ctx.EventManager().EmitEvent(sdk.NewEvent("usdc_migration_candidate_skipped",
 					sdk.NewAttribute("upgrade", "v2.23.0"), sdk.NewAttribute("registry", contract.String()),
 					sdk.NewAttribute("source", address), sdk.NewAttribute("reason", "invalid_evm_address")))
 				continue

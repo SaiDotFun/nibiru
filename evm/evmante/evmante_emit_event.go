@@ -29,8 +29,8 @@ func AnteStepEmitPendingEvent(
 	// Tendermint tx_search can only search the untyped events.
 	// TxHash and TxIndex values are exposed in the ante handler (before the actual tx execution)
 	// to allow searching for txs which are failed due to "out of block gas limit" error.
-	sdb.Ctx().EventManager().EmitEventWithUniqueKeys(
-		sdk.NewEventWithUniqueKeys(
+	sdb.Ctx().EventManager().EmitEvent(
+		sdk.NewEvent(
 			evm.PendingEthereumTxEvent,
 			sdk.NewAttribute(evm.PendingEthereumTxEventAttrEthHash, msgEthTx.Hash),
 			sdk.NewAttribute(evm.PendingEthereumTxEventAttrIndex, strconv.FormatUint(txIndex, 10)),
