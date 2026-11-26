@@ -32,7 +32,7 @@ func TestQuerySearchTransactions(t *testing.T) {
     totalCount
     nodes {
       ...TxFields
-      events @include(if: $wantEvents) { type attributes { key value } }
+      events @include(if: $wantEvents) { type attributes }
     }
   }
 }
@@ -56,9 +56,9 @@ fragment TxFields on Transaction { where: height code }
 	got, err := callSearchCommand(t, document, `{"from":100,"address":"nibi1é","count":5}`, server.URL)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
-  "data":{"results":{"totalCount":1,"nodes":[
-    {"where":101,"code":0,"events":[{"type":"transfer","attributes":[{"key":"amount","value":"42unibi"}]}]}
-  ]}}
+  "results":{"totalCount":1,"nodes":[
+    {"where":101,"code":0,"events":[{"type":"transfer","attributes":[["amount","42unibi"]]}]}
+  ]}
 }`, got)
 }
 
@@ -68,7 +68,7 @@ func TestQuerySearchEvents(t *testing.T) {
     height: { gte: 100, lte: 103 }, phases: [BEGIN_BLOCK, END_BLOCK], type: "wasm",
     attributes: { key: "position", eq: "" }
   }, after: "cursor", first: 2) {
-    nodes { height phase txIndex txHash eventIndex type attributes { key index } }
+    nodes { height phase txIndex txHash eventIndex type attributes attributeDetails { key index } }
     nextCursor
     coverage { minHeight maxHeight }
   }
@@ -87,11 +87,12 @@ func TestQuerySearchEvents(t *testing.T) {
 	got, err := callSearchCommand(t, document, "{}", server.URL)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
-  "data":{"events":{
+  "events":{
     "nodes":[{"height":101,"phase":"END_BLOCK","txIndex":null,"txHash":null,"eventIndex":0,"type":"wasm",
-      "attributes":[{"key":"position","index":false},{"key":"position","index":true}]}],
+      "attributes":[["position",""],["position","later"]],
+      "attributeDetails":[{"key":"position","index":false},{"key":"position","index":true}]}],
     "nextCursor":null,"coverage":[{"minHeight":101,"maxHeight":103}]
-  }}
+  }
 }`, got)
 }
 
@@ -138,7 +139,7 @@ func TestQuerySearchRejectsIntrospectionBeforeDispatch(t *testing.T) {
 
 	out, err := callSearchCommand(t, "{ __typename }", "{}", "http://127.0.0.1:1")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"data":{"__typename":"Query"}}`, out)
+	require.JSONEq(t, `{"__typename":"Query"}`, out)
 }
 
 func TestQuerySearchSchema(t *testing.T) {
@@ -198,7 +199,7 @@ func TestQuerySearchBothFieldsWithEveryInput(t *testing.T) {
 				cmd.SetIn(strings.NewReader(document))
 				cmd.SetArgs(append([]string{"search", "--node", server.URL}, tc.args...))
 				require.NoError(t, cmd.ExecuteContext(t.Context()))
-				require.JSONEq(t, `{"data":{"transactions":{"totalCount":1},"events":{"nodes":[{"phase":"END_BLOCK"}]}}}`, out.String())
+				require.JSONEq(t, `{"transactions":{"totalCount":1},"events":{"nodes":[{"phase":"END_BLOCK"}]}}`, out.String())
 			})
 		}
 	}

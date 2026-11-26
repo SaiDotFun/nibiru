@@ -69,7 +69,10 @@ type Transaction {
 
 type Event {
   type: String!
-  attributes: [EventAttribute!]!
+  """Attributes in event order, each as [key, value]. Keys may repeat."""
+  attributes: [[String!]!]!
+  """Attributes with their original index flags."""
+  attributeDetails: [EventAttribute!]!
 }
 
 type IndexedEvent {
@@ -79,7 +82,10 @@ type IndexedEvent {
   txHash: String
   eventIndex: Int!
   type: String!
-  attributes: [EventAttribute!]!
+  """Attributes in event order, each as [key, value]. Keys may repeat."""
+  attributes: [[String!]!]!
+  """Attributes with their original index flags."""
+  attributeDetails: [EventAttribute!]!
 }
 
 type EventAttribute {
