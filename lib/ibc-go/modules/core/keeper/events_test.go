@@ -64,6 +64,21 @@ func TestConvertToErrorEvents(t *testing.T) {
 			},
 		},
 		{
+			"success: repeated attributes preserve value order",
+			func() {
+				events = sdk.Events{sdk.NewEvent("testevent",
+					sdk.NewAttribute("label", "first"),
+					sdk.NewAttribute("other", "middle"),
+					sdk.NewAttribute("label", "second"),
+				)}
+				expEvents = sdk.Events{sdk.NewEvent(types.ErrorAttributeKeyPrefix+"testevent",
+					sdk.NewAttribute(types.ErrorAttributeKeyPrefix+"label", "first"),
+					sdk.NewAttribute(types.ErrorAttributeKeyPrefix+"other", "middle"),
+					sdk.NewAttribute(types.ErrorAttributeKeyPrefix+"label", "second"),
+				)}
+			},
+		},
+		{
 			"success: multiple events with attributes",
 			func() {
 				events = sdk.Events{

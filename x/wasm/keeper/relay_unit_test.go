@@ -333,6 +333,7 @@ func TestOnRecvPacket(t *testing.T) {
 		expErr             bool
 		expPanic           bool
 		expEventTypes      []string
+		expEvents          sdk.Events
 	}{
 		"contract returns success ack": {
 			contractAddr:   example.Contract,
@@ -388,22 +389,31 @@ func TestOnRecvPacket(t *testing.T) {
 		},
 		"emit contract events on success": {
 			contractAddr:   example.Contract,
-			expContractGas: myContractGas + 46, // charge or custom event as well
+			expContractGas: myContractGas + 56,
 			contractResp: &wvm.IBCReceiveResult{
 				Ok: &wvm.IBCReceiveResponse{
 					Acknowledgement: []byte("myAck"),
 					Attributes:      []wvm.EventAttribute{{Key: "Foo", Value: "Bar"}},
 					Events: []wvm.Event{{
 						Type: "custom",
-						Attributes: []wvm.EventAttribute{{
-							Key:   "message",
-							Value: "to rudi",
-						}},
+						Attributes: []wvm.EventAttribute{
+							{Key: "message", Value: "to rudi"},
+							{Key: "message", Value: "to sophia"},
+						},
 					}},
 				},
 			},
 			expEventTypes: []string{types.WasmModuleEventType, "wasm-custom"},
-			expAck:        []byte("myAck"),
+			expEvents: sdk.Events{
+				sdk.NewEvent(types.WasmModuleEventType,
+					sdk.NewAttribute(types.AttributeKeyContractAddr, example.Contract.String()),
+					sdk.NewAttribute("Foo", "Bar")),
+				sdk.NewEvent("wasm-custom",
+					sdk.NewAttribute(types.AttributeKeyContractAddr, example.Contract.String()),
+					sdk.NewAttribute("message", "to rudi"),
+					sdk.NewAttribute("message", "to sophia")),
+			},
+			expAck: []byte("myAck"),
 		},
 		"messenger errors returned": {
 			contractAddr:   example.Contract,
@@ -499,6 +509,9 @@ func TestOnRecvPacket(t *testing.T) {
 					assert.Equal(t, (*capturedMsgs)[i], m.Msg)
 				}
 				assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
+				if spec.expEvents != nil {
+					require.Equal(t, spec.expEvents, ctx.EventManager().Events())
+				}
 			}
 		})
 	}

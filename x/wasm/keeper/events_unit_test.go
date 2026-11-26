@@ -83,6 +83,19 @@ func TestNewCustomEvents(t *testing.T) {
 				sdk.NewAttribute("myKey", "myVal"),
 				sdk.NewAttribute("myOtherKey", "myOtherVal"))},
 		},
+		"repeated attributes survive whitespace trimming": {
+			src: wvm.Events{{
+				Type: "foo",
+				Attributes: []wvm.EventAttribute{
+					{Key: " label ", Value: "first"},
+					{Key: "label", Value: "second"},
+				},
+			}},
+			exp: sdk.Events{sdk.NewEvent("wasm-foo",
+				sdk.NewAttribute("_contract_address", myContract.String()),
+				sdk.NewAttribute("label", "first"),
+				sdk.NewAttribute("label", "second"))},
+		},
 		"multiple events": {
 			src: wvm.Events{{
 				Type:       "foo",
@@ -253,6 +266,16 @@ func TestNewWasmModuleEvent(t *testing.T) {
 			exp: sdk.Events{sdk.NewEvent("wasm",
 				sdk.NewAttribute("_contract_address", myContract.String()),
 				sdk.NewAttribute("my-real-key", "some-val"))},
+		},
+		"repeated attributes survive whitespace trimming": {
+			src: []wvm.EventAttribute{
+				{Key: " label ", Value: "first"},
+				{Key: "label", Value: "second"},
+			},
+			exp: sdk.Events{sdk.NewEvent("wasm",
+				sdk.NewAttribute("_contract_address", myContract.String()),
+				sdk.NewAttribute("label", "first"),
+				sdk.NewAttribute("label", "second"))},
 		},
 		"empty elements": {
 			src:     make([]wvm.EventAttribute, 10),

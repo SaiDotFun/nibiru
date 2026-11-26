@@ -3,6 +3,7 @@ package keeper
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -319,6 +320,14 @@ func TestDispatchSubmessages(t *testing.T) {
 					if res.Events[1].Type != "wasm" {
 						return nil, fmt.Errorf("event1: %#v", res.Events[1])
 					}
+					wantAttributes := []wvm.EventAttribute{
+						{Key: "other", Value: "data"},
+						{Key: "random", Value: "first"},
+						{Key: "random", Value: "second"},
+					}
+					if !slices.Equal(wantAttributes, res.Events[1].Attributes) {
+						return nil, fmt.Errorf("reply event attributes: got %v, want %v", res.Events[1].Attributes, wantAttributes)
+					}
 
 					// let's add a custom event here and see if it makes it out
 					ctx.EventManager().EmitEvent(sdk.NewEvent("wasm-reply"))
@@ -333,7 +342,10 @@ func TestDispatchSubmessages(t *testing.T) {
 						sdk.NewEvent("message", sdk.NewAttribute("_contract_address", contractAddr.String())),
 						// we don't know what the contarctAddr will be so we can't use it in the final tests
 						sdk.NewEvent("execute", sdk.NewAttribute("_contract_address", "placeholder-random-addr")),
-						sdk.NewEvent("wasm", sdk.NewAttribute("random", "data")),
+						sdk.NewEvent("wasm",
+							sdk.NewAttribute("random", "first"),
+							sdk.NewAttribute("other", "data"),
+							sdk.NewAttribute("random", "second")),
 					}
 					return events, [][]byte{[]byte("subData")}, nil
 				},
@@ -342,7 +354,10 @@ func TestDispatchSubmessages(t *testing.T) {
 			expCommits: []bool{true},
 			expEvents: []sdk.Event{
 				sdk.NewEvent("execute", sdk.NewAttribute("_contract_address", "placeholder-random-addr")),
-				sdk.NewEvent("wasm", sdk.NewAttribute("random", "data")),
+				sdk.NewEvent("wasm",
+					sdk.NewAttribute("other", "data"),
+					sdk.NewAttribute("random", "first"),
+					sdk.NewAttribute("random", "second")),
 				sdk.NewEvent("wasm-reply"),
 			},
 		},
