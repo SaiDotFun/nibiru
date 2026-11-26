@@ -139,7 +139,7 @@ func AnteStepDeductGas(
 	}
 
 	msgEthTx.FromAddrBech32()
-	sdb.Ctx().EventManager().EmitEvent(sdk.NewEvent(
+	sdb.Ctx().EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
 		sdk.EventTypeTx,
 		sdk.NewAttribute(sdk.AttributeKeyFee, fees.String()),
 		sdk.NewAttribute(sdk.AttributeKeyFeePayer, from.String()),

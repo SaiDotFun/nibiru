@@ -280,6 +280,23 @@ func TestUpgrade2_23_0USDCBeginBlockEvents(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "88", report.Collected)
 	require.Equal(t, fmt.Sprint(height), fmt.Sprint(report.Height))
+
+	var completed [][]string
+	for _, event := range response.Events {
+		status, ok := sdk.Event(event).GetAttribute("status")
+		if event.Type != "usdc_migration" || !ok || status.Value != "completed" {
+			continue
+		}
+		keys := make([]string, 0, len(event.Attributes))
+		for _, attr := range event.Attributes {
+			keys = append(keys, attr.Key)
+		}
+		completed = append(completed, keys)
+	}
+	require.Equal(t, [][]string{{
+		"upgrade", "height", "status", "registry", "token", "denom", "safe", "reason",
+		"bank_supply_remaining", "module_escrow_remaining", "escrow_excess",
+	}}, completed)
 }
 
 // Unbacked direct donations remain escrow rather than becoming an entitlement.

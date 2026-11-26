@@ -156,7 +156,7 @@ func (k Keeper) TrySelectExecutionHeight(ctx sdk.Context) error {
 		RequestID: target.ID, Name: target.Name, Height: ctx.BlockHeight(), Category: category,
 	})
 	ctx.Logger().Error("upgrade execution height selection failed", "upgrade", target.Name, "err", err)
-	ctx.EventManager().EmitEvent(sdk.NewEvent("upgrade_selection_failed",
+	ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys("upgrade_selection_failed",
 		sdk.NewAttribute("request_id", strconv.FormatUint(target.ID, 10)),
 		sdk.NewAttribute("upgrade", target.Name),
 		sdk.NewAttribute("height", strconv.FormatInt(ctx.BlockHeight(), 10)),

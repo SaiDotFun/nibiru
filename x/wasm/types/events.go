@@ -46,8 +46,8 @@ func EmitAcknowledgementEvent(ctx sdk.Context, contractAddr sdk.AccAddress, ack 
 		attributes = append(attributes, sdk.NewAttribute(AttributeKeyAckError, err.Error()))
 	}
 
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
+	ctx.EventManager().EmitEventWithUniqueKeys(
+		sdk.NewEventWithUniqueKeys(
 			EventTypePacketRecv,
 			attributes...,
 		),

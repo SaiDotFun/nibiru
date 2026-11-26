@@ -106,9 +106,9 @@ func (h DefaultUpgradeHandler) Handler(
 // exits. This is used to debug why an upgrade failed while allowing it to
 // proceed without panicking and halting the blockchain.
 func NewEventUpgradeFailure(upgradeName string, err error) sdk.Event {
-	return sdk.NewEvent(
+	return sdk.NewEventWithUniqueKeys(
 		"upgrade_failure",
 		sdk.NewAttribute("upgrade", upgradeName),
 		sdk.NewAttribute("error", err.Error()),
-	)
+	).ToEvent()
 }

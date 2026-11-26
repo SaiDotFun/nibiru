@@ -128,11 +128,11 @@ func (anteDec DeductFeeDecorator) checkDeductFee(
 	}
 
 	events := sdk.Events{
-		sdk.NewEvent(
+		sdk.NewEventWithUniqueKeys(
 			sdk.EventTypeTx,
 			sdk.NewAttribute(sdk.AttributeKeyFee, fee.String()),
 			sdk.NewAttribute(sdk.AttributeKeyFeePayer, deductFeesFrom.String()),
-		),
+		).ToEvent(),
 	}
 	ctx.EventManager().EmitEvents(events)
 

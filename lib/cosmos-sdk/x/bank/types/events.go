@@ -29,32 +29,34 @@ const (
 	AttributeKeyWeiChangeReason = "wei_change_reason"
 )
 
-func weiChangeReasonAttr(reason string) sdk.Attribute {
-	return sdk.NewAttribute(AttributeKeyWeiChangeReason, reason)
+// WeiChangeReason identifies the action that changed a set of wei balances.
+type WeiChangeReason string
+
+const (
+	WeiChangeSendCoins        WeiChangeReason = "bank.SendCoins"
+	WeiChangeInputOutputCoins WeiChangeReason = "bank.InputOutputCoins"
+	WeiChangeUndelegateCoins  WeiChangeReason = "bank.UndelegateCoins"
+	WeiChangeMintCoins        WeiChangeReason = "bank.MintCoins"
+	WeiChangeBurnCoins        WeiChangeReason = "bank.BurnCoins"
+	WeiChangeDelegateCoins    WeiChangeReason = "bank.DelegateCoins"
+	WeiChangeAddWei           WeiChangeReason = "evm.AddWei"
+	WeiChangeSubWei           WeiChangeReason = "evm.SubWei"
+)
+
+func weiChangeReasonAttr(reason WeiChangeReason) sdk.Attribute {
+	return sdk.NewAttribute(AttributeKeyWeiChangeReason, string(reason))
 }
 
+// These attributes support existing callers of NewEventWeiChange.
 var (
-	WeiChangeReason_SendCoins = weiChangeReasonAttr("bank.SendCoins")
-	// InputOutputCoins - uses addCoins, subUnlockedCoins
-	WeiChangeReason_InputOutputCoins = weiChangeReasonAttr("bank.InputOutputCoins")
-
-	// UndelegateCoins - uses addCoins, subUnlockedCoins
-	WeiChangeReason_UndelegateCoins = weiChangeReasonAttr("bank.UndelegateCoins")
-
-	// MintCoins - uses addCoins
-	WeiChangeReason_MintCoins = weiChangeReasonAttr("bank.MintCoins")
-
-	// BurnCoins - uses subUnlockedCoins
-	WeiChangeReason_BurnCoins = weiChangeReasonAttr("bank.BurnCoins")
-
-	// DelegateCoins - uses addCoins, setBalance
-	WeiChangeReason_DelegateCoins = weiChangeReasonAttr("bank.DelegateCoins")
-
-	// AddWei - EVM SDB only
-	WeiChangeReason_AddWei = weiChangeReasonAttr("evm.AddWei")
-
-	// SubWei - EVM SDB only
-	WeiChangeReason_SubWei = weiChangeReasonAttr("evm.SubWei")
+	WeiChangeReason_SendCoins        = weiChangeReasonAttr(WeiChangeSendCoins)
+	WeiChangeReason_InputOutputCoins = weiChangeReasonAttr(WeiChangeInputOutputCoins)
+	WeiChangeReason_UndelegateCoins  = weiChangeReasonAttr(WeiChangeUndelegateCoins)
+	WeiChangeReason_MintCoins        = weiChangeReasonAttr(WeiChangeMintCoins)
+	WeiChangeReason_BurnCoins        = weiChangeReasonAttr(WeiChangeBurnCoins)
+	WeiChangeReason_DelegateCoins    = weiChangeReasonAttr(WeiChangeDelegateCoins)
+	WeiChangeReason_AddWei           = weiChangeReasonAttr(WeiChangeAddWei)
+	WeiChangeReason_SubWei           = weiChangeReasonAttr(WeiChangeSubWei)
 )
 
 func WeiChangeAddrsString(addrs ...string) string {
@@ -111,5 +113,14 @@ func NewEventWeiChange(reason sdk.Attribute, addrs ...string) sdk.Event {
 			AttributeKeyWeiChangeAddrs,
 			WeiChangeAddrsString(addrs...),
 		),
+	)
+}
+
+// NewEventWeiChangeWithUniqueKeys constructs a wei change event from a reason value.
+func NewEventWeiChangeWithUniqueKeys(reason WeiChangeReason, addrs ...string) sdk.EventWithUniqueKeys {
+	return sdk.NewEventWithUniqueKeys(
+		EventTypeWeiChange,
+		weiChangeReasonAttr(reason),
+		sdk.NewAttribute(AttributeKeyWeiChangeAddrs, WeiChangeAddrsString(addrs...)),
 	)
 }

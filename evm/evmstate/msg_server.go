@@ -897,12 +897,12 @@ func (k *Keeper) GetEvmTxEvents(
 		eventEthereumTx.VmError = evmResp.VmError
 	}
 	events.EventEthereumTx = *eventEthereumTx
-	events.EventMessage = sdk.NewEvent(
+	events.EventMessage = sdk.NewEventWithUniqueKeys(
 		sdk.EventTypeMessage,
 		sdk.NewAttribute(sdk.AttributeKeyModule, evm.ModuleName),
 		sdk.NewAttribute(sdk.AttributeKeySender, msg.From.Hex()),
 		sdk.NewAttribute(evm.MessageEventAttrTxType, fmt.Sprintf("%d", txType)),
-	)
+	).ToEvent()
 
 	// Emit typed events
 	if !evmResp.Failed() {

@@ -158,10 +158,10 @@ func (k BaseSendKeeper) AddWei(
 	)
 
 	ctx.EventManager().EmitEvent(
-		bank.NewEventWeiChange(
-			bank.WeiChangeReason_AddWei,
+		bank.NewEventWeiChangeWithUniqueKeys(
+			bank.WeiChangeAddWei,
 			addr.String(),
-		),
+		).ToEvent(),
 	)
 }
 
@@ -207,10 +207,10 @@ func (k BaseSendKeeper) SubWei(
 	)
 
 	ctx.EventManager().EmitEvent(
-		bank.NewEventWeiChange(
-			bank.WeiChangeReason_SubWei,
+		bank.NewEventWeiChangeWithUniqueKeys(
+			bank.WeiChangeSubWei,
 			addr.String(),
-		),
+		).ToEvent(),
 	)
 	return nil
 }
@@ -258,23 +258,23 @@ func eventsForSendCoins(
 	isSome, _ := coins.Find(DENOM_UNIBI)
 
 	events := sdk.Events{
-		sdk.NewEvent(
+		sdk.NewEventWithUniqueKeys(
 			bank.EventTypeTransfer,
 			sdk.NewAttribute(bank.AttributeKeyRecipient, toAddrStr),
 			sdk.NewAttribute(bank.AttributeKeySender, fromAddrStr),
 			sdk.NewAttribute(sdk.AttributeKeyAmount, coins.String()),
-		),
+		).ToEvent(),
 	}
 	if isSome {
-		events = append(events, bank.NewEventWeiChange(
-			bank.WeiChangeReason_SendCoins,
+		events = append(events, bank.NewEventWeiChangeWithUniqueKeys(
+			bank.WeiChangeSendCoins,
 			fromAddrStr, toAddrStr,
-		))
+		).ToEvent())
 	}
-	events = append(events, sdk.NewEvent(
+	events = append(events, sdk.NewEventWithUniqueKeys(
 		sdk.EventTypeMessage,
 		sdk.NewAttribute(bank.AttributeKeySender, fromAddrStr),
-	))
+	).ToEvent())
 	return events
 }
 

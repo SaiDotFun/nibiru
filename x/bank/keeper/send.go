@@ -181,8 +181,8 @@ func (k BaseSendKeeper) InputOutputCoins(ctx sdk.Context, inputs []types.Input, 
 			weiChangeAddrs = append(weiChangeAddrs, in.Address)
 		}
 
-		ctx.EventManager().EmitEvent(
-			sdk.NewEvent(
+		ctx.EventManager().EmitEventWithUniqueKeys(
+			sdk.NewEventWithUniqueKeys(
 				sdk.EventTypeMessage,
 				sdk.NewAttribute(types.AttributeKeySender, in.Address),
 			),
@@ -204,8 +204,8 @@ func (k BaseSendKeeper) InputOutputCoins(ctx sdk.Context, inputs []types.Input, 
 			weiChangeAddrs = append(weiChangeAddrs, out.Address)
 		}
 
-		ctx.EventManager().EmitEvent(
-			sdk.NewEvent(
+		ctx.EventManager().EmitEventWithUniqueKeys(
+			sdk.NewEventWithUniqueKeys(
 				types.EventTypeTransfer,
 				sdk.NewAttribute(types.AttributeKeyRecipient, out.Address),
 				sdk.NewAttribute(sdk.AttributeKeyAmount, out.Coins.String()),
@@ -225,10 +225,10 @@ func (k BaseSendKeeper) InputOutputCoins(ctx sdk.Context, inputs []types.Input, 
 
 	if len(weiChangeAddrs) > 0 {
 		ctx.EventManager().EmitEvent(
-			types.NewEventWeiChange(
-				types.WeiChangeReason_InputOutputCoins,
+			types.NewEventWeiChangeWithUniqueKeys(
+				types.WeiChangeInputOutputCoins,
 				weiChangeAddrs...,
-			),
+			).ToEvent(),
 		)
 	}
 

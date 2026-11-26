@@ -79,7 +79,7 @@ func (k Keeper) runWasmBlockHook(ctx sdk.Context, hookKind wasmBlockHookKind) {
 	if err != nil {
 		// Record a registry query or plan decode failure without aborting block
 		// processing.
-		ctx.EventManager().EmitEvent(sdk.NewEvent(
+		ctx.EventManager().EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys(
 			wasmtypes.WasmBlockHookPlanFailedEventType(string(hookKind)),
 			sdk.NewAttribute(sdk.AttributeKeyModule, wasmtypes.ModuleName),
 			sdk.NewAttribute(wasmtypes.AttributeKeyWasmBlockHookError, err.Error()),
@@ -120,8 +120,8 @@ func (k Keeper) runWasmBlockHook(ctx sdk.Context, hookKind wasmBlockHookKind) {
 		failuresJSON, _ := json.Marshal(failures) // json serde is type safe here
 		attrs = append(attrs, sdk.NewAttribute(wasmtypes.AttributeKeyWasmBlockHookFailures, string(failuresJSON)))
 	}
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(wasmtypes.EventTypeWasmBlockHookSummary, attrs...),
+	ctx.EventManager().EmitEventWithUniqueKeys(
+		sdk.NewEventWithUniqueKeys(wasmtypes.EventTypeWasmBlockHookSummary, attrs...),
 	)
 }
 

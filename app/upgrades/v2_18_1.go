@@ -381,14 +381,14 @@ func loadERC20ValueV218(
 }
 
 func newRecoveryEventV218(source, destination, asset, amount string) sdk.Event {
-	return sdk.NewEvent(
+	return sdk.NewEventWithUniqueKeys(
 		"incident_fund_recovery",
 		sdk.NewAttribute("upgrade", "v2.18.1"),
 		sdk.NewAttribute("source", source),
 		sdk.NewAttribute("destination", destination),
 		sdk.NewAttribute("asset", asset),
 		sdk.NewAttribute("amount", amount),
-	)
+	).ToEvent()
 }
 
 type recoveryFailureV218 struct {
@@ -413,9 +413,9 @@ func newRecoveryFailureEventV218(
 	if marshalErr != nil {
 		details = []byte(fmt.Sprintf(`{"error":%q}`, marshalErr.Error()))
 	}
-	return sdk.NewEvent(
+	return sdk.NewEventWithUniqueKeys(
 		"incident_fund_recovery_failure",
 		sdk.NewAttribute("upgrade", "v2.18.1"),
 		sdk.NewAttribute("details", string(details)),
-	)
+	).ToEvent()
 }
