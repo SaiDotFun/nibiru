@@ -394,10 +394,7 @@ func querySearchTransactions(ctx context.Context, rpc rpcclient.Caller, where []
 		}
 		events := make([]map[string]any, 0, len(tx.TxResult.Events))
 		for _, event := range tx.TxResult.Events {
-			events = append(events, map[string]any{
-				"type": event.Type, "attributes": searchAttributePairs(event.Attributes),
-				"attributeDetails": searchAttributeDetails(event.Attributes),
-			})
+			events = append(events, map[string]any{"type": event.Type, "attributes": searchAttributePairs(event.Attributes)})
 		}
 		nodes = append(nodes, map[string]any{
 			"hash": tx.Hash.String(), "height": tx.Height, "index": tx.Index, "code": tx.TxResult.Code,
@@ -444,8 +441,7 @@ func querySearchEvents(ctx context.Context, rpc rpcclient.Caller, where []byte, 
 		nodes = append(nodes, map[string]any{
 			"height": event.Height, "phase": strings.ToUpper(event.Phase), "txIndex": event.TxIndex,
 			"txHash": hash, "eventIndex": event.EventIndex, "type": event.Type,
-			"attributes":       searchAttributePairs(event.Attributes),
-			"attributeDetails": searchAttributeDetails(event.Attributes),
+			"attributes": searchAttributePairs(event.Attributes),
 		})
 	}
 	coverage := make([]map[string]any, 0, len(result.Coverage))
@@ -477,14 +473,6 @@ func searchAttributePairs(attrs []abci.EventAttribute) [][2]string {
 	out := make([][2]string, 0, len(attrs))
 	for _, attr := range attrs {
 		out = append(out, [2]string{attr.Key, attr.Value})
-	}
-	return out
-}
-
-func searchAttributeDetails(attrs []abci.EventAttribute) []map[string]any {
-	out := make([]map[string]any, 0, len(attrs))
-	for _, attr := range attrs {
-		out = append(out, map[string]any{"key": attr.Key, "value": attr.Value, "index": attr.Index})
 	}
 	return out
 }

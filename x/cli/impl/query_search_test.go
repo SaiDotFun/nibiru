@@ -68,7 +68,7 @@ func TestQuerySearchEvents(t *testing.T) {
     height: { gte: 100, lte: 103 }, phases: [BEGIN_BLOCK, END_BLOCK], type: "wasm",
     attributes: { key: "position", eq: "" }
   }, after: "cursor", first: 2) {
-    nodes { height phase txIndex txHash eventIndex type attributes attributeDetails { key index } }
+    nodes { height phase txIndex txHash eventIndex type attributes }
     nextCursor
     coverage { minHeight maxHeight }
   }
@@ -89,8 +89,7 @@ func TestQuerySearchEvents(t *testing.T) {
 	require.JSONEq(t, `{
   "events":{
     "nodes":[{"height":101,"phase":"END_BLOCK","txIndex":null,"txHash":null,"eventIndex":0,"type":"wasm",
-      "attributes":[["position",""],["position","later"]],
-      "attributeDetails":[{"key":"position","index":false},{"key":"position","index":true}]}],
+      "attributes":[["position",""],["position","later"]]}],
     "nextCursor":null,"coverage":[{"minHeight":101,"maxHeight":103}]
   }
 }`, got)

@@ -71,8 +71,6 @@ type Event {
   type: String!
   """Attributes in event order, each as [key, value]. Keys may repeat."""
   attributes: [[String!]!]!
-  """Attributes with their original index flags."""
-  attributeDetails: [EventAttribute!]!
 }
 
 type IndexedEvent {
@@ -84,14 +82,6 @@ type IndexedEvent {
   type: String!
   """Attributes in event order, each as [key, value]. Keys may repeat."""
   attributes: [[String!]!]!
-  """Attributes with their original index flags."""
-  attributeDetails: [EventAttribute!]!
-}
-
-type EventAttribute {
-  key: String!
-  value: String!
-  index: Boolean!
 }
 
 type IndexedHeightRange {
