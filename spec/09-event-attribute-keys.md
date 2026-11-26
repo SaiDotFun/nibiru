@@ -77,7 +77,9 @@ it keeps ABCI responses. The existing `discard_abci_responses` setting
 controls whether the node saves that history and is unchanged. The node
 ignores the retired `event-search` setting in older configuration files.
 The event index builds from retained results and uses separate disk space.
-Startup can continue if the auxiliary index is unavailable.
+The first startup on a partial-history node limits its initial scan to find
+older responses. If that scan times out, the worker checks historical heights
+in the background. Startup can continue if the auxiliary index is unavailable.
 
 [pr]: https://github.com/SaiDotFun/nibiru/pull/2972
 [sdk]: ../lib/cosmos-sdk/types/events.go

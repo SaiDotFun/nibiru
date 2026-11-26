@@ -157,14 +157,21 @@ func (n *Node) prepareEventSearch() (_ eventSearchState, first int64, err error)
 		if first == 0 || ranges[0].MinHeight < first {
 			first = ranges[0].MinHeight
 		}
-	} else if first != 1 && state.LastBlockHeight > 0 {
+	} else if first != state.InitialHeight && state.LastBlockHeight > 0 {
 		// Discover response-only history before consensus writes to the
-		// iterator's domain. A block store starting at 1 needs no scan.
-		retained, err := source.FirstRetainedABCIHeight(context.Background())
-		if err != nil {
+		// iterator's domain. An archive with its genesis block needs no scan.
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		defer cancel()
+		retained, err := source.FirstRetainedABCIHeight(ctx)
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			// Let catch-up discover the available history by height in the
+			// background, without holding an iterator across state writes.
+			first = max(1, state.InitialHeight)
+			n.Logger.Info("Event result discovery timed out; scanning history in the background", "from_height", first)
+		case err != nil:
 			return nil, 0, fmt.Errorf("locate retained ABCI responses: %w", err)
-		}
-		if retained != 0 {
+		case retained != 0:
 			first = retained
 		}
 	}
