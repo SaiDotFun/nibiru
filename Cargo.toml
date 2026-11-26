@@ -2,6 +2,7 @@
 members = [
   "contrib/scripts",
   "lib/cosmwasm-vm",
+  "lib/cosmwasm-std",
   "lib/cosmwasm-optimizer",
   "lib/cw-address-like",
   "lib/easy-addr",
@@ -85,3 +86,6 @@ codegen-units = 1
 panic = 'abort'
 incremental = false
 overflow-checks = true
+
+[patch.crates-io]
+cosmwasm-std = { path = "lib/cosmwasm-std" }

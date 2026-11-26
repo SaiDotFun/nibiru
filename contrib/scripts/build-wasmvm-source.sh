@@ -48,7 +48,7 @@ fi
 source_hash="$(
   cd "$repo_root"
   git ls-files -z --cached --others --exclude-standard -- \
-    Cargo.toml Cargo.lock rust-toolchain.toml lib/wasmer lib/cosmwasm-vm \
+    Cargo.toml Cargo.lock rust-toolchain.toml lib/wasmer lib/cosmwasm-vm lib/cosmwasm-std \
     lib/wasmvm/libwasmvm lib/wasmvm/builders contrib/scripts/build-wasmvm-source.sh \
     contrib/docker/Dockerfile.wasmvm-source |
     sort -zu |
