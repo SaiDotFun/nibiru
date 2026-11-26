@@ -165,8 +165,8 @@ func ExtractHeightFilter(conditions []query.Condition, key string) ([]query.Cond
 			continue
 		}
 		height, ok := c.Operand.(*big.Int)
-		if !ok || !height.IsInt64() {
-			return nil, QueryRange{}, fmt.Errorf("%s requires a signed 64-bit integer operand", key)
+		if !ok {
+			return nil, QueryRange{}, fmt.Errorf("%s requires an integer operand", key)
 		}
 		heightRange.Key = key
 

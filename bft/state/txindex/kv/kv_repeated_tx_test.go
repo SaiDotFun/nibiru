@@ -119,3 +119,17 @@ func TestSearchSkipsMissingReceipt(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, results)
 }
+
+func TestSearchAcceptsWideHeightBounds(t *testing.T) {
+	idx := NewTxIndex(db.NewMemDB())
+	result := txResultWithEvents(nil)
+	require.NoError(t, idx.Index(result))
+
+	matches, err := idx.SearchByTransaction(t.Context(), query.MustParse("tx.height < 9223372036854775808"))
+	require.NoError(t, err)
+	require.Equal(t, []*abci.TxResult{result}, matches)
+
+	matches, err = idx.SearchByTransaction(t.Context(), query.MustParse("tx.height = 9223372036854775808"))
+	require.NoError(t, err)
+	require.Empty(t, matches)
+}

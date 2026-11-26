@@ -112,8 +112,9 @@ func (idx *BlockerIndexer) Search(ctx context.Context, q *query.Query) ([]int64,
 
 	lower, _ := heightRange.LowerBound.(*big.Int)
 	upper, _ := heightRange.UpperBound.(*big.Int)
-	// Exclusive bounds at the ends of the signed range can leave no valid heights.
-	if (lower != nil && !lower.IsInt64()) || (upper != nil && !upper.IsInt64()) {
+	// A bound beyond the signed height range can leave no valid heights.
+	if (lower != nil && !lower.IsInt64() && lower.Sign() > 0) ||
+		(upper != nil && !upper.IsInt64() && upper.Sign() < 0) {
 		return results, nil
 	}
 	if lower != nil && upper != nil && lower.Cmp(upper) > 0 {
