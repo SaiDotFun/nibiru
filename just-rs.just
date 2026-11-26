@@ -58,7 +58,7 @@ optimizer-oracle-test artifact:
 wasm-check:
   just rs optimizer check wasm-contracts/artifacts/*.wasm
 
-# Check embedded Chain contracts against release builds of their Rust source.
+# Verify frozen bootstrap Wasm and rebuild other embedded Chain contracts.
 wasm-embed-check:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -66,6 +66,23 @@ wasm-embed-check:
   for required_command in just cargo gzip sha256sum sed cut; do
     which_ok "$required_command"
   done
+  check_bootstrap() {
+    local module_name="$1" expected="$2"
+    local artifact="x/$module_name/x_$module_name.wasm.gz"
+    local embedded constant
+    embedded="$(gzip -dc "$artifact" | sha256sum | cut -d' ' -f1)"
+    constant="$(sed -n 's/^const ContractWasmSHA256 = "\([0-9a-f]*\)"$/\1/p' "x/$module_name/wasm.go")"
+    if [[ "$embedded" != "$expected" || "$constant" != "$expected" ]]; then
+      echo "$artifact and ContractWasmSHA256 must match the v2.23.0 bootstrap checksum $expected." >&2
+      exit 1
+    fi
+    echo "x-$module_name v2.23.0 bootstrap checksum verified: $expected"
+  }
+  # v2.23.0 (2a0ed1446bba9d2f76a4338270f135d433c2694b) used these Wasm bytes
+  # to instantiate both contracts. Their checksums determine the addresses.
+  check_bootstrap consensus f1ac9367879aac63755370c4ff779b8d684598f3a43021306764376ce5c3912e
+  check_bootstrap upgrade 693dbb25b092ffebe8d7cc65df0ba51b98ba322e31cecac29fbbbe2882537311
+
   shopt -s nullglob
   manifests=(wasm-contracts/x-*/Cargo.toml)
   if [ "${#manifests[@]}" -eq 0 ]; then
@@ -74,9 +91,13 @@ wasm-embed-check:
   fi
   # Check the complete set before spending time on release builds. The x- crate
   # convention requires an embedded artifact and checksum in its Go module.
+  rebuild_manifests=()
   for manifest in "${manifests[@]}"; do
     crate_dir="${manifest%/Cargo.toml}"
     crate_name="${crate_dir##*/}"
+    case "$crate_name" in
+      x-consensus|x-upgrade) continue ;;
+    esac
     module_name="${crate_name#x-}"
     artifact_name="${crate_name//-/_}"
     for embedded_file in "x/$module_name/$artifact_name.wasm.gz" "x/$module_name/wasm.go"; do
@@ -90,9 +111,10 @@ wasm-embed-check:
       echo "$crate_name: expected one SHA-256 constant in x/$module_name/wasm.go" >&2
       exit 1
     fi
+    rebuild_manifests+=("$manifest")
   done
   out="wasm-contracts/artifacts/embed-check"
-  for manifest in "${manifests[@]}"; do
+  for manifest in "${rebuild_manifests[@]}"; do
     crate_dir="${manifest%/Cargo.toml}"
     crate_name="${crate_dir##*/}"
     module_name="${crate_name#x-}"
