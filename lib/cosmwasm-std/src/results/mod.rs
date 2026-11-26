@@ -18,6 +18,7 @@ pub use cosmos_msg::{DistributionMsg, StakingMsg};
 #[cfg(feature = "stargate")]
 pub use cosmos_msg::{GovMsg, VoteOption};
 pub use empty::Empty;
+pub(crate) use events::set_attribute;
 pub use events::{attr, Attribute, Event};
 pub use query::QueryResponse;
 pub use response::Response;

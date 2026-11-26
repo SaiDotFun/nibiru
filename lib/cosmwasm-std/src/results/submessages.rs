@@ -208,6 +208,18 @@ mod tests {
     use crate::{from_json, to_json_vec, StdError, StdResult};
 
     #[test]
+    fn reply_preserves_repeated_attribute_keys() {
+        let wire = br#"{"id":7,"result":{"ok":{"events":[{"type":"wasm","attributes":[{"key":"key","value":"first"},{"key":"other","value":"middle"},{"key":"key","value":"last"}]}],"data":null}}}"#;
+        let reply: Reply = from_json(wire).unwrap();
+        assert_eq!(to_json_vec(&reply).unwrap(), wire);
+        let response = reply.result.unwrap();
+        assert_eq!(
+            response.events[0].attributes,
+            vec![("key", "first"), ("other", "middle"), ("key", "last")]
+        );
+    }
+
+    #[test]
     fn sub_msg_result_serialization_works() {
         let result = SubMsgResult::Ok(SubMsgResponse {
             data: None,
