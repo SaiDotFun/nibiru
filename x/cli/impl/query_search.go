@@ -19,6 +19,7 @@ import (
 	"github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/client"
 	"github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/client/flags"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/validator"
@@ -62,14 +63,25 @@ The events field requires the node's event index.`,
 
   nibiru query search --file search.graphql
   nibiru query search --schema`,
-		Args: cobra.NoArgs,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := cobra.NoArgs(cmd, args); err != nil {
+				return err
+			}
+			// The root pre-run applies config values to flags. Decide from
+			// the command-line flags before it runs.
+			hasSearchFlag := false
+			cmd.LocalNonPersistentFlags().VisitAll(func(flag *pflag.Flag) {
+				hasSearchFlag = hasSearchFlag || flag.Changed
+			})
+			if !hasSearchFlag {
+				return pflag.ErrHelp
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showSchema {
 				_, err := io.WriteString(cmd.OutOrStdout(), searchSchemaSource)
 				return err
-			}
-			if cmd.Flags().NFlag() == 0 {
-				return cmd.Help()
 			}
 			document := gql
 			if cmd.Flags().Changed("file") {

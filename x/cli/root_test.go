@@ -44,3 +44,13 @@ func TestRootCmdConfig(t *testing.T) {
 	require.NoError(t, svrcmd.Execute(rootCmd, "", app.DefaultNodeHome))
 	require.Equal(t, "direct\n", output.String())
 }
+
+func TestSearchHelpWithRootConfig(t *testing.T) {
+	rootCmd, _ := nibid.NewRootCmdNamed("nibiru")
+	var output bytes.Buffer
+	rootCmd.SetOut(&output)
+	rootCmd.SetArgs([]string{"query", "search", "--home", t.TempDir()})
+	require.NoError(t, svrcmd.Execute(rootCmd, "", app.DefaultNodeHome))
+	require.Contains(t, output.String(), "Search indexed chain data")
+	require.Contains(t, output.String(), "--gql")
+}
