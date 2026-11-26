@@ -28,8 +28,7 @@ func QueryCmd() *cobra.Command {
 		rpc.BlockCommand(),
 		authcmd.QueryTxsByEventsCmd(),
 		QueryTxCmd(),
-		querySearchCmd("transactions", "Find transactions with a GraphQL document", "nibiru query transactions --file transactions.graphql"),
-		querySearchCmd("events", "Find block and transaction events with a GraphQL document", "nibiru query events --file events.graphql"),
+		querySearchCmd(),
 	)
 
 	app.ModuleBasics.AddQueryCommands(rootQueryCmd)
@@ -91,7 +90,7 @@ var txHelpGroups = []helpGroup{
 var queryHelpGroups = []helpGroup{
 	{ID: "everyday", Title: "Everyday Modules:", Names: everydayModules},
 	{ID: "chain", Title: "Chain Data:", Names: []string{
-		"account", "block", "events", "transactions", "tx", "txs", "tendermint-validator-set",
+		"account", "block", "search", "tx", "txs", "tendermint-validator-set",
 	}},
 }
 

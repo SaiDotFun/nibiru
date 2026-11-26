@@ -2,13 +2,21 @@ package impl
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/NibiruChain/nibiru/v2/app"
+	"github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/client"
+	sdk "github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/types"
 )
 
 func TestQuerySearchTransactions(t *testing.T) {
@@ -44,7 +52,7 @@ fragment TxFields on Transaction { where: height code }
   }}],
   "total_count":"1"
 }`)
-	got, err := callSearchCommand(t, "transactions", document, `{"from":100,"address":"nibi1é","count":5}`, server.URL)
+	got, err := callSearchCommand(t, document, `{"from":100,"address":"nibi1é","count":5}`, server.URL)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
   "data":{"results":{"totalCount":1,"nodes":[
@@ -75,7 +83,7 @@ func TestQuerySearchEvents(t *testing.T) {
   }],
   "coverage":[{"min_height":"101","max_height":"103"}]
 }`)
-	got, err := callSearchCommand(t, "events", document, "{}", server.URL)
+	got, err := callSearchCommand(t, document, "{}", server.URL)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
   "data":{"events":{
@@ -93,11 +101,10 @@ func TestQuerySearchInvalidDocument(t *testing.T) {
 		{"schema", `{ transactions(where: {}) { nodes { badField } } }`, "{}", "Cannot query field"},
 		{"variables", `query($height: Long!) { transactions(where: {height: {gte: $height}}) { totalCount } }`, "{}", "must be defined"},
 		{"custom scalar overflow", `{ transactions(where: {height: {gte: 9223372036854775808}}) { totalCount } }`, "{}", "Expected value of type"},
-		{"wrong root", `{ events(where: {}) { nextCursor } }`, "{}", "accepts only the GraphQL field transactions"},
 		{"operation selection", `query A { transactions(where: {}) { totalCount } } query B { transactions(where: {}) { totalCount } }`, "{}", "specify --operation"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := callSearchCommand(t, "transactions", tc.document, tc.vars, "http://127.0.0.1:1")
+			_, err := callSearchCommand(t, tc.document, tc.vars, "http://127.0.0.1:1")
 			require.ErrorContains(t, err, tc.errorText)
 		})
 	}
@@ -107,26 +114,115 @@ func TestQuerySearchSchema(t *testing.T) {
 	cmd := QueryCmd()
 	out := new(bytes.Buffer)
 	cmd.SetOut(out)
-	cmd.SetArgs([]string{"events", "--schema"})
+	cmd.SetArgs([]string{"search", "--schema", "--node", "http://127.0.0.1:1"})
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
 	require.Contains(t, out.String(), "type IndexedEvent")
+	require.Contains(t, out.String(), "type TransactionPage")
 	require.Contains(t, out.String(), "BEGIN_BLOCK")
 }
 
-func callSearchCommand(t *testing.T, name, document, variables, node string) (string, error) {
+func callSearchCommand(t *testing.T, document, variables, node string) (string, error) {
 	t.Helper()
 	cmd := QueryCmd()
 	cmd.SilenceErrors, cmd.SilenceUsage = true, true
 	cmd.SetIn(strings.NewReader(document))
 	out := new(bytes.Buffer)
 	cmd.SetOut(out)
-	cmd.SetArgs([]string{name, "--file", "-", "--variables", variables, "--node", node})
+	cmd.SetArgs([]string{"search", "--file", "-", "--variables", variables, "--node", node})
 	err := cmd.ExecuteContext(t.Context())
 	return out.String(), err
 }
 
+func TestQuerySearchBothFieldsWithEveryInput(t *testing.T) {
+	const document = `{
+		transactions(where: {height: {gte: 132, lte: 132}}) { totalCount }
+		events(where: {height: {gte: 132, lte: 132}}) { nodes { phase } }
+	}`
+	server, calls := searchResponses(t, map[string]searchFixture{
+		"tx_search": {
+			`{"filter":{"min_height":"132","max_height":"132"},"order_by":"asc","page":"1","per_page":"20"}`,
+			`{"txs":[],"total_count":"1"}`,
+		},
+		"event_search": {
+			`{"filter":{"min_height":"132","max_height":"132","attributes":[]},"limit":"20"}`,
+			`{"events":[{"height":"132","phase":"end_block","event_index":0,"type":"wasm","attributes":[]}],"coverage":[]}`,
+		},
+	})
+	path := filepath.Join(t.TempDir(), "search.graphql")
+	require.NoError(t, os.WriteFile(path, []byte(document), 0o600))
+
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"inline", []string{"--gql", document}},
+		{"file", []string{"--file", path}},
+		{"stdin", []string{"--file", "-"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := QueryCmd()
+			out := new(bytes.Buffer)
+			cmd.SetOut(out)
+			cmd.SetIn(strings.NewReader(document))
+			cmd.SetArgs(append([]string{"search", "--node", server.URL}, tc.args...))
+			require.NoError(t, cmd.ExecuteContext(t.Context()))
+			require.JSONEq(t, `{"data":{"transactions":{"totalCount":1},"events":{"nodes":[{"phase":"END_BLOCK"}]}}}`, out.String())
+		})
+	}
+	require.Equal(t, int32(6), calls.Load())
+}
+
+func TestQuerySearchInputFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"missing", nil, "at least one of the flags"},
+		{"two documents", []string{"--file", "-", "--gql", "{}"}, "none of the others can be"},
+		{"schema and document", []string{"--schema", "--gql", "{}"}, "none of the others can be"},
+		{"empty document", []string{"--gql", ""}, "provide a GraphQL document"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := QueryCmd()
+			cmd.SilenceErrors, cmd.SilenceUsage = true, true
+			cmd.SetArgs(append([]string{"search"}, tc.args...))
+			require.ErrorContains(t, cmd.ExecuteContext(t.Context()), tc.want)
+		})
+	}
+}
+
+func TestLegacyTxsByEvents(t *testing.T) {
+	server := searchResponse(t, "tx_search", `{
+		"query":"tx.height=132 AND transfer.amount='12345unibi'",
+		"page":"1","per_page":"20","prove":true,"order_by":""
+	}`, `{"txs":[],"total_count":"0"}`)
+	cfg := app.MakeEncodingConfig()
+	out := new(bytes.Buffer)
+	clientCtx := client.Context{}.WithCodec(cfg.Codec).WithTxConfig(cfg.TxConfig).
+		WithOutput(out).WithOutputFormat("json")
+	cmd := QueryCmd()
+	cmd.SetArgs([]string{"txs", "--events", "tx.height=132&transfer.amount=12345unibi", "--page", "1", "--limit", "20", "--node", server.URL})
+	require.NoError(t, cmd.ExecuteContext(context.WithValue(t.Context(), client.ClientContextKey, &clientCtx)))
+	expected, err := cfg.Codec.MarshalJSON(sdk.NewSearchTxsResult(0, 0, 1, 20, []*sdk.TxResponse{}))
+	require.NoError(t, err)
+	require.JSONEq(t, string(expected), out.String())
+}
+
+type searchFixture struct {
+	params string
+	result string
+}
+
 func searchResponse(t *testing.T, method, params, result string) *httptest.Server {
 	t.Helper()
+	server, _ := searchResponses(t, map[string]searchFixture{method: {params, result}})
+	return server
+}
+
+func searchResponses(t *testing.T, fixtures map[string]searchFixture) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var call struct {
 			ID     json.RawMessage
@@ -138,14 +234,16 @@ func searchResponse(t *testing.T, method, params, result string) *httptest.Serve
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		require.Equal(t, method, call.Method)
-		require.JSONEq(t, params, string(call.Params))
+		fixture, ok := fixtures[call.Method]
+		require.True(t, ok, "unexpected RPC method %s", call.Method)
+		require.JSONEq(t, fixture.params, string(call.Params))
+		calls.Add(1)
 		resp := map[string]any{
-			"jsonrpc": "2.0", "id": call.ID, "result": json.RawMessage(result),
+			"jsonrpc": "2.0", "id": call.ID, "result": json.RawMessage(fixture.result),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		require.NoError(t, json.NewEncoder(w).Encode(resp))
 	}))
 	t.Cleanup(server.Close)
-	return server
+	return server, &calls
 }

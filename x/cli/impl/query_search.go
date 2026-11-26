@@ -29,23 +29,37 @@ var searchSchemaSource string
 
 var searchSchema = gqlparser.MustLoadSchema(&ast.Source{Name: "query_search.graphqls", Input: searchSchemaSource})
 
-func querySearchCmd(field, description, example string) *cobra.Command {
-	var file, variables, operation string
+const maxSearchDocumentSize = 1 << 20
+
+func querySearchCmd() *cobra.Command {
+	var gql, file, variables, operation string
 	var showSchema bool
 	cmd := &cobra.Command{
-		Use:     field,
-		Short:   description,
-		Long:    description + ". Use --schema to list the supported filters and result fields.",
-		Example: example,
-		Args:    cobra.NoArgs,
+		Use:   "search",
+		Short: "Find transactions and events with GraphQL",
+		Long:  "Find transactions and events with GraphQL. Use --schema to list the supported filters and result fields.",
+		Example: `  nibiru query search --gql '{ transactions(where: {height: {gte: 132, lte: 132}}) { nodes { hash code } } }'
+  nibiru query search --file search.graphql
+  nibiru query search --schema`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showSchema {
 				_, err := io.WriteString(cmd.OutOrStdout(), searchSchemaSource)
 				return err
 			}
-			document, err := readSearchDocument(cmd, file)
-			if err != nil {
-				return err
+			document := gql
+			if cmd.Flags().Changed("file") {
+				data, err := readSearchDocument(cmd, file)
+				if err != nil {
+					return err
+				}
+				document = string(data)
+			}
+			if strings.TrimSpace(document) == "" {
+				return errors.New("provide a GraphQL document with --gql or --file, or use --schema")
+			}
+			if len(document) > maxSearchDocumentSize {
+				return errors.New("GraphQL document exceeds 1 MiB")
 			}
 			clientCtx, err := client.GetClientQueryContext(cmd)
 			if err != nil {
@@ -55,7 +69,7 @@ func querySearchCmd(field, description, example string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, err := executeSearchDocument(cmd.Context(), rpc, field, string(document), variables, operation)
+			data, err := executeSearchDocument(cmd.Context(), rpc, document, variables, operation)
 			if err != nil {
 				return err
 			}
@@ -63,12 +77,13 @@ func querySearchCmd(field, description, example string) *cobra.Command {
 		},
 	}
 	cmd.Flags().String(flags.FlagNode, "tcp://localhost:26657", "BFT RPC endpoint")
+	cmd.Flags().StringVar(&gql, "gql", "", "Inline GraphQL document")
 	cmd.Flags().StringVar(&file, "file", "", "GraphQL document file, or - to read from stdin")
 	cmd.Flags().StringVar(&variables, "variables", "{}", "GraphQL variables as a JSON object")
 	cmd.Flags().StringVar(&operation, "operation", "", "Operation name for a document with several operations")
 	cmd.Flags().BoolVar(&showSchema, "schema", false, "Print the GraphQL schema")
-	cmd.MarkFlagsOneRequired("file", "schema")
-	cmd.MarkFlagsMutuallyExclusive("file", "schema")
+	cmd.MarkFlagsOneRequired("gql", "file", "schema")
+	cmd.MarkFlagsMutuallyExclusive("gql", "file", "schema")
 	return cmd
 }
 
@@ -82,15 +97,10 @@ func readSearchDocument(cmd *cobra.Command, file string) ([]byte, error) {
 		defer f.Close()
 		reader = f
 	}
-	const maxDocumentSize = 1 << 20
-	document, err := io.ReadAll(io.LimitReader(reader, maxDocumentSize+1))
-	if err == nil && len(document) > maxDocumentSize {
-		return nil, errors.New("GraphQL document exceeds 1 MiB")
-	}
-	return document, err
+	return io.ReadAll(io.LimitReader(reader, maxSearchDocumentSize+1))
 }
 
-func executeSearchDocument(ctx context.Context, rpc rpcclient.Caller, root, document, variables, operation string) (map[string]any, error) {
+func executeSearchDocument(ctx context.Context, rpc rpcclient.Caller, document, variables, operation string) (map[string]any, error) {
 	doc, errs := gqlparser.LoadQuery(searchSchema, document)
 	if len(errs) > 0 {
 		return nil, errs
@@ -118,11 +128,6 @@ func executeSearchDocument(ctx context.Context, rpc rpcclient.Caller, root, docu
 	}
 
 	fields := searchFields(op.SelectionSet, "Query", bound)
-	for _, field := range fields {
-		if field.Name != root && field.Name != "__typename" {
-			return nil, fmt.Errorf("the %s command accepts only the GraphQL field %s", root, root)
-		}
-	}
 	data := make(map[string]any, len(fields))
 	for _, field := range fields {
 		if field.Name == "__typename" {
