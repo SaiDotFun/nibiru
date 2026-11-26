@@ -58,6 +58,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 // TxSearch searches transaction results for predicates across indexed events in
 // each transaction. It returns a page of results and the total count.
 // More: https://docs.cometbft.com/v0.37/rpc/#/Info/tx_search
+// Inequalities on the same attribute form one range for a single value.
 func TxSearch(
 	ctx *rpctypes.Context,
 	query string,

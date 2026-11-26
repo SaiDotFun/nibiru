@@ -712,7 +712,7 @@ func (store dbStore) readABCIResponses(height int64, fatalCorruption bool) (*cmt
 		if fatalCorruption {
 			cmtos.Exit(fmt.Sprintf("LoadABCIResponses: data at height %d has been corrupted or its schema has changed: %v", height, err))
 		}
-		return nil, fmt.Errorf("decode ABCI responses at height %d: %w", height, err)
+		return nil, fmt.Errorf("%w at height %d: %w", ErrCorruptABCIResponses, height, err)
 	}
 	return result, nil
 }

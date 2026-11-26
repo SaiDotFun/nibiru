@@ -10,6 +10,7 @@ import (
 	tmstate "github.com/NibiruChain/nibiru/v2/bft/proto/tendermint/state"
 	sm "github.com/NibiruChain/nibiru/v2/bft/state"
 	"github.com/NibiruChain/nibiru/v2/bft/state/eventsearch"
+	"github.com/NibiruChain/nibiru/v2/bft/store"
 	"github.com/NibiruChain/nibiru/v2/bft/types"
 )
 
@@ -20,7 +21,7 @@ type eventSearchState interface {
 
 type eventSearchBlocks interface {
 	Base() int64
-	LoadBlock(height int64) *types.Block
+	ReadBlock(height int64) (*types.Block, error)
 }
 
 type eventSearchIndex interface {
@@ -39,7 +40,7 @@ func startEventSearch(state eventSearchState, blocks eventSearchBlocks, index ev
 		defer ticker.Stop()
 		next := first
 		for {
-			if err := catchUpEventSearch(ctx, state, blocks, index, &next); err != nil && ctx.Err() == nil {
+			if err := catchUpEventSearch(ctx, state, blocks, index, &next, logger); err != nil && ctx.Err() == nil {
 				logger.Error("Updating event search index", "height", next, "err", err)
 			}
 			select {
@@ -55,7 +56,7 @@ func startEventSearch(state eventSearchState, blocks eventSearchBlocks, index ev
 	}
 }
 
-func catchUpEventSearch(ctx context.Context, state eventSearchState, blocks eventSearchBlocks, index eventSearchIndex, next *int64) error {
+func catchUpEventSearch(ctx context.Context, state eventSearchState, blocks eventSearchBlocks, index eventSearchIndex, next *int64, logger log.Logger) error {
 	base := blocks.Base()
 	if *next == 0 && base == 0 {
 		return nil
@@ -87,35 +88,34 @@ func catchUpEventSearch(ctx context.Context, state eventSearchState, blocks even
 			*next = coverage[0].MaxHeight + 1
 			continue
 		}
-		responses, err := state.ReadABCIResponses(*next)
+		err := indexEventSearchHeight(state, blocks, index, *next)
 		if err != nil {
 			var missing sm.ErrNoABCIResponsesForHeight
-			if !errors.As(err, &missing) {
-				return fmt.Errorf("load block results at height %d: %w", *next, err)
-			}
-			// Missing history stays visible as a gap in coverage.
-		} else {
-			block, err := loadEventSearchBlock(blocks, *next)
-			if err != nil {
+			switch {
+			case errors.As(err, &missing):
+				// Missing history stays visible as a gap in coverage.
+			case errors.Is(err, sm.ErrCorruptABCIResponses), errors.Is(err, store.ErrCorruptBlock), errors.Is(err, eventsearch.ErrPositionMismatch):
+				logger.Error("Skipping unreadable event search history", "height", *next, "err", err)
+			default:
 				return err
 			}
-			if err := index.IndexBlock(*next, block, responses); err != nil && !errors.Is(err, eventsearch.ErrPositionMismatch) {
-				return fmt.Errorf("index block results at height %d: %w", *next, err)
-			}
-			// A position mismatch also leaves a gap rather than assigning wrong coordinates.
 		}
 		*next = *next + 1
 	}
 	return nil
 }
 
-// Legacy block readers panic on historical corruption. Keep that failure
-// within the optional indexer so it cannot terminate the node.
-func loadEventSearchBlock(blocks eventSearchBlocks, height int64) (block *types.Block, err error) {
-	defer func() {
-		if failure := recover(); failure != nil {
-			err = fmt.Errorf("load block %d for event search: %v", height, failure)
-		}
-	}()
-	return blocks.LoadBlock(height), nil
+func indexEventSearchHeight(state eventSearchState, blocks eventSearchBlocks, index eventSearchIndex, height int64) error {
+	responses, err := state.ReadABCIResponses(height)
+	if err != nil {
+		return fmt.Errorf("load block results at height %d: %w", height, err)
+	}
+	block, err := blocks.ReadBlock(height)
+	if err != nil {
+		return fmt.Errorf("read block at height %d: %w", height, err)
+	}
+	if err := index.IndexBlock(height, block, responses); err != nil {
+		return fmt.Errorf("index block results at height %d: %w", height, err)
+	}
+	return nil
 }

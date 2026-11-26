@@ -341,6 +341,27 @@ func TestTxSearchEventRangeConjunctions(t *testing.T) {
 	}
 }
 
+func TestFlatSearchRequiresOneValuePerRange(t *testing.T) {
+	index := NewTxIndex(db.NewMemDB())
+	result := txResultWithEvents([]abci.Event{
+		{Type: "sample", Attributes: []abci.EventAttribute{{Key: "amount", Value: "1", Index: true}}},
+		{Type: "sample", Attributes: []abci.EventAttribute{{Key: "amount", Value: "9", Index: true}}},
+	})
+	require.NoError(t, index.Index(result))
+	for _, tc := range []struct {
+		query string
+		count int
+	}{
+		{"sample.amount = '1' AND sample.amount = '9'", 1},
+		{"sample.amount < 2 AND sample.amount > 8", 0},
+		{"sample.amount > 8 AND sample.amount < 10", 1},
+	} {
+		rows, err := index.SearchByTransaction(t.Context(), query.MustParse(tc.query))
+		require.NoError(t, err)
+		require.Len(t, rows, tc.count, tc.query)
+	}
+}
+
 func TestTxSearchHeightConjunctions(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 	for _, height := range []int64{1, 5, 10} {

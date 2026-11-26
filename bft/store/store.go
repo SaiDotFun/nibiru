@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -117,35 +118,41 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
 func (bs *BlockStore) LoadBlock(height int64) *types.Block {
-	blockMeta := bs.LoadBlockMeta(height)
-	if blockMeta == nil {
-		return nil
+	block, err := bs.ReadBlock(height)
+	if err != nil {
+		panic(err)
+	}
+	return block
+}
+
+// ErrCorruptBlock indicates stored block bytes could not be decoded.
+var ErrCorruptBlock = errors.New("cannot decode persisted block")
+
+// ReadBlock returns a block or an error. A missing body returns nil.
+func (bs *BlockStore) ReadBlock(height int64) (*types.Block, error) {
+	blockMeta, err := bs.readBlockMeta(height)
+	if err != nil || blockMeta == nil {
+		return nil, err
 	}
 
 	pbb := new(cmtproto.Block)
-	buf := []byte{}
+	var buf []byte
 	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
-		part := bs.LoadBlockPart(height, i)
-		// If the part is missing (e.g. since it has been deleted after we
-		// loaded the block meta) we consider the whole block to be missing.
-		if part == nil {
-			return nil
+		part, err := bs.readBlockPart(height, i)
+		// Pruning may delete the parts after a caller loads the metadata.
+		if err != nil || part == nil {
+			return nil, err
 		}
 		buf = append(buf, part.Bytes...)
 	}
-	err := proto.Unmarshal(buf, pbb)
-	if err != nil {
-		// NOTE: The existence of meta should imply the existence of the
-		// block. So, make sure meta is only saved after blocks are saved.
-		panic(fmt.Sprintf("Error reading block: %v", err))
+	if err := proto.Unmarshal(buf, pbb); err != nil {
+		return nil, fmt.Errorf("%w at height %d: Error reading block: %w", ErrCorruptBlock, height, err)
 	}
-
 	block, err := types.BlockFromProto(pbb)
 	if err != nil {
-		panic(fmt.Errorf("error from proto block: %w", err))
+		return nil, fmt.Errorf("%w at height %d: error from proto block: %w", ErrCorruptBlock, height, err)
 	}
-
-	return block
+	return block, nil
 }
 
 // LoadBlockByHash returns the block with the given hash.
@@ -172,52 +179,55 @@ func (bs *BlockStore) LoadBlockByHash(hash []byte) *types.Block {
 // from the block at the given height.
 // If no part is found for the given height and index, it returns nil.
 func (bs *BlockStore) LoadBlockPart(height int64, index int) *types.Part {
-	pbpart := new(cmtproto.Part)
-
-	bz, err := bs.db.Get(calcBlockPartKey(height, index))
+	part, err := bs.readBlockPart(height, index)
 	if err != nil {
 		panic(err)
 	}
-	if len(bz) == 0 {
-		return nil
+	return part
+}
+
+func (bs *BlockStore) readBlockPart(height int64, index int) (*types.Part, error) {
+	bz, err := bs.db.Get(calcBlockPartKey(height, index))
+	if err != nil || len(bz) == 0 {
+		return nil, err
 	}
 
-	err = proto.Unmarshal(bz, pbpart)
-	if err != nil {
-		panic(fmt.Errorf("unmarshal to cmtproto.Part failed: %w", err))
+	pbpart := new(cmtproto.Part)
+	if err := proto.Unmarshal(bz, pbpart); err != nil {
+		return nil, fmt.Errorf("%w part %d at height %d: unmarshal to cmtproto.Part failed: %w", ErrCorruptBlock, index, height, err)
 	}
 	part, err := types.PartFromProto(pbpart)
 	if err != nil {
-		panic(fmt.Sprintf("Error reading block part: %v", err))
+		return nil, fmt.Errorf("%w part %d at height %d: Error reading block part: %w", ErrCorruptBlock, index, height, err)
 	}
-
-	return part
+	return part, nil
 }
 
 // LoadBlockMeta returns the BlockMeta for the given height.
 // If no block is found for the given height, it returns nil.
 func (bs *BlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
-	pbbm := new(cmtproto.BlockMeta)
-	bz, err := bs.db.Get(calcBlockMetaKey(height))
+	meta, err := bs.readBlockMeta(height)
 	if err != nil {
 		panic(err)
 	}
+	return meta
+}
 
-	if len(bz) == 0 {
-		return nil
+func (bs *BlockStore) readBlockMeta(height int64) (*types.BlockMeta, error) {
+	bz, err := bs.db.Get(calcBlockMetaKey(height))
+	if err != nil || len(bz) == 0 {
+		return nil, err
 	}
 
-	err = proto.Unmarshal(bz, pbbm)
-	if err != nil {
-		panic(fmt.Errorf("unmarshal to cmtproto.BlockMeta: %w", err))
+	pbbm := new(cmtproto.BlockMeta)
+	if err := proto.Unmarshal(bz, pbbm); err != nil {
+		return nil, fmt.Errorf("%w metadata at height %d: unmarshal to cmtproto.BlockMeta: %w", ErrCorruptBlock, height, err)
 	}
-
 	blockMeta, err := types.BlockMetaFromTrustedProto(pbbm)
 	if err != nil {
-		panic(fmt.Errorf("error from proto blockMeta: %w", err))
+		return nil, fmt.Errorf("%w metadata at height %d: error from proto blockMeta: %w", ErrCorruptBlock, height, err)
 	}
-
-	return blockMeta
+	return blockMeta, nil
 }
 
 // LoadBlockMetaByHash returns the blockmeta who's header corresponds to the given
