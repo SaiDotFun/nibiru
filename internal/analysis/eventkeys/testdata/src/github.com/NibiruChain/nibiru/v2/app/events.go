@@ -23,6 +23,10 @@ func checked(key string, attrs []renamed.Attribute) {
 		{otherAlias, "a"},
 		1: {Key: "sender", Value: "b"}, // want `duplicate event attribute key "sender"`
 	}...)
+	renamed.NewEventWithUniqueKeys("transfer",
+		renamed.Attribute{Value: "zero key"},
+		renamed.Attribute{}, // want `duplicate event attribute key ""`
+	)
 	renamed.NewEventWithUniqueKeys("transfer", renamed.NewAttribute(key, "value"))
 	renamed.NewEventWithUniqueKeys("transfer", attrs...)
 

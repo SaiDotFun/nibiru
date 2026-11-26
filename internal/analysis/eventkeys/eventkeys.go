@@ -183,42 +183,46 @@ func checkCall(pass *analysis.Pass, call *ast.CallExpr, stack []ast.Node) {
 		if elt, ok := expr.(*ast.KeyValueExpr); ok {
 			expr = elt.Value
 		}
-		keyExpr := attributeKey(pass.TypesInfo, expr)
-		if keyExpr == nil {
-			reportUnresolved(pass, expr.Pos())
+		key, pos, known := attributeKey(pass.TypesInfo, expr)
+		if !known {
+			reportUnresolved(pass, pos)
 			continue
 		}
-		value := pass.TypesInfo.Types[keyExpr].Value
-		if value == nil || value.Kind() != constant.String {
-			reportUnresolved(pass, keyExpr.Pos())
-			continue
-		}
-		key := constant.StringVal(value)
 		if _, ok := seen[key]; ok {
-			pass.Reportf(keyExpr.Pos(), "duplicate event attribute key %q", key)
+			pass.Reportf(pos, "duplicate event attribute key %q", key)
 		}
 		seen[key] = struct{}{}
 	}
 }
 
-func attributeKey(info *types.Info, expr ast.Expr) ast.Expr {
+func attributeKey(info *types.Info, expr ast.Expr) (string, token.Pos, bool) {
 	switch expr := ast.Unparen(expr).(type) {
 	case *ast.CallExpr:
 		if isSDKFunction(function(info, expr.Fun), "NewAttribute") {
-			return expr.Args[0]
+			return constantKey(info, expr.Args[0])
 		}
 	case *ast.CompositeLit:
 		for i, elt := range expr.Elts {
 			if pair, ok := elt.(*ast.KeyValueExpr); ok {
 				if key, ok := pair.Key.(*ast.Ident); ok && key.Name == "Key" {
-					return pair.Value
+					return constantKey(info, pair.Value)
 				}
 			} else if i == 0 {
-				return elt
+				return constantKey(info, elt)
 			}
 		}
+		// The SDK attribute's Key field has the zero value when omitted.
+		return "", expr.Pos(), true
 	}
-	return nil
+	return "", expr.Pos(), false
+}
+
+func constantKey(info *types.Info, expr ast.Expr) (string, token.Pos, bool) {
+	value := info.Types[expr].Value
+	if value == nil || value.Kind() != constant.String {
+		return "", expr.Pos(), false
+	}
+	return constant.StringVal(value), expr.Pos(), true
 }
 
 func reportUnresolved(pass *analysis.Pass, pos token.Pos) {
