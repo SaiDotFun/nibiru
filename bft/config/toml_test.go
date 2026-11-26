@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,12 +33,31 @@ func TestEnsureRoot(t *testing.T) {
 	// make sure config is set properly
 	data, err := os.ReadFile(filepath.Join(tmpDir, defaultConfigFilePath))
 	require.Nil(err)
+	require.NotContains(string(data), "event-search")
 
 	if !checkConfig(string(data)) {
 		t.Fatalf("config file missing some information")
 	}
 
 	ensureFiles(t, tmpDir, "data")
+}
+
+func TestLegacyEventSearchConfig(t *testing.T) {
+	const legacy = `[tx_index]
+indexer = "kv"
+event-search = false
+
+[storage]
+discard_abci_responses = false
+`
+	v := viper.New()
+	v.SetConfigType("toml")
+	require.NoError(t, v.ReadConfig(strings.NewReader(legacy)))
+	cfg := DefaultConfig()
+	require.NoError(t, v.Unmarshal(cfg))
+	require.NoError(t, cfg.ValidateBasic())
+	require.Equal(t, "kv", cfg.TxIndex.Indexer)
+	require.False(t, cfg.Storage.DiscardABCIResponses)
 }
 
 func TestEnsureTestRoot(t *testing.T) {

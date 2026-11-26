@@ -896,10 +896,6 @@ func NewNodeWithContext(ctx context.Context,
 	options ...Option,
 ) (*Node, error) {
 
-	if config.TxIndex.EventSearch && config.Storage.DiscardABCIResponses {
-		return nil, errors.New("event-search requires persisted ABCI responses")
-	}
-
 	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err
@@ -1136,53 +1132,18 @@ func NewNodeWithContext(ctx context.Context,
 
 // OnStart starts the Node. It implements service.Service.
 func (n *Node) OnStart() (startErr error) {
-	var searchState eventSearchState
-	var searchFirst int64
-	if n.config.TxIndex.EventSearch {
-		eventDB, err := n.eventSearchDBProvider(&DBContext{"event_search_v1", n.config})
-		if err != nil {
-			return fmt.Errorf("open event search index: %w", err)
-		}
-		n.eventSearch = eventsearch.New(eventDB)
-		defer func() {
-			if startErr != nil {
-				if err := n.eventSearch.Close(); err != nil {
-					n.Logger.Error("Closing event search index", "err", err)
-				}
-				n.eventSearch = nil
-			}
-		}()
-		source, ok := n.stateStore.(sm.BootstrapStore)
-		if !ok {
-			return errors.New("event search requires a bootstrap state store")
-		}
-		searchState = source
-		state, err := source.Load()
-		if err != nil {
-			return err
-		}
-		ranges, err := n.eventSearch.Coverage()
-		if err != nil {
-			return err
-		}
-		if len(ranges) > 0 && ranges[len(ranges)-1].MaxHeight > state.LastBlockHeight {
-			return errors.New("event search index is ahead of committed state; rebuild the event index")
-		}
-		searchFirst = n.blockStore.Base()
-		if len(ranges) == 0 {
-			// Discover response-only history before consensus can write to the
-			// state DB's iterator domain. Existing indexes resume from coverage.
-			first, err := source.FirstRetainedABCIHeight(context.Background())
-			if err != nil {
-				return fmt.Errorf("locate retained ABCI responses: %w", err)
-			}
-			if first != 0 {
-				searchFirst = first
-			}
-		} else if first := ranges[0].MinHeight; searchFirst == 0 || first < searchFirst {
-			searchFirst = first
-		}
+	searchState, searchFirst, err := n.prepareEventSearch()
+	if err != nil {
+		n.Logger.Error("Event search unavailable", "err", err)
 	}
+	defer func() {
+		if startErr != nil && n.eventSearch != nil {
+			if err := n.eventSearch.Close(); err != nil {
+				n.Logger.Error("Closing event search index", "err", err)
+			}
+			n.eventSearch = nil
+		}
+	}()
 
 	now := cmttime.Now()
 	genTime := n.genesisDoc.GenesisTime

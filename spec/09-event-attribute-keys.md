@@ -72,6 +72,13 @@ reorder them when a client renders the object again. The search CLI requires
 a node that returns this object shape. Use block or transaction results for
 the complete ordered attribute list and index flags. [RPC handler][rpc]
 
+On upgrade, the node builds or resumes its event index automatically when
+it keeps ABCI responses. The existing `discard_abci_responses` setting
+controls whether the node saves that history and is unchanged. The node
+ignores the retired `event-search` setting in older configuration files.
+The event index builds from retained results and uses separate disk space.
+Startup can continue if the auxiliary index is unavailable.
+
 [pr]: https://github.com/SaiDotFun/nibiru/pull/2972
 [sdk]: ../lib/cosmos-sdk/types/events.go
 [adapter]: ../x/wasm/keeper/events.go

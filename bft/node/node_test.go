@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -80,6 +81,7 @@ func TestNodeStartStop(t *testing.T) {
 	require.NoError(t, err)
 	err = n.Start()
 	require.NoError(t, err)
+	require.NotNil(t, n.eventSearch)
 
 	t.Logf("Started node %v", n.sw.NodeInfo())
 
@@ -93,6 +95,10 @@ func TestNodeStartStop(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out waiting for the node to produce a block")
 	}
+	require.Eventually(t, func() bool {
+		coverage, err := n.eventSearch.Coverage()
+		return err == nil && len(coverage) > 0
+	}, 5*time.Second, 100*time.Millisecond)
 
 	// stop the node
 	go func() {
@@ -111,6 +117,27 @@ func TestNodeStartStop(t *testing.T) {
 		err = p.Signal(syscall.SIGABRT)
 		fmt.Println(err)
 		t.Fatal("timed out waiting for shutdown")
+	}
+}
+
+func TestNodeStartsWithoutEventSearch(t *testing.T) {
+	for _, discard := range []bool{true, false} {
+		t.Run(fmt.Sprintf("discard_responses=%t", discard), func(t *testing.T) {
+			config := cfg.ResetTestRoot("node_without_event_search")
+			t.Cleanup(func() { require.NoError(t, os.RemoveAll(config.RootDir)) })
+			config.Storage.DiscardABCIResponses = discard
+			n, err := newTestNode(config, log.TestingLogger())
+			require.NoError(t, err)
+			attempted := false
+			n.eventSearchDBProvider = func(*DBContext) (dbm.DB, error) {
+				attempted = true
+				return nil, errors.New("unavailable event search database")
+			}
+			require.NoError(t, n.Start())
+			t.Cleanup(func() { require.NoError(t, n.Stop()) })
+			require.Nil(t, n.eventSearch)
+			require.Equal(t, !discard, attempted)
+		})
 	}
 }
 

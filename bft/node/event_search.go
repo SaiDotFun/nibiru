@@ -119,3 +119,55 @@ func indexEventSearchHeight(state eventSearchState, blocks eventSearchBlocks, in
 	}
 	return nil
 }
+
+// prepareEventSearch uses the node's response retention policy. The caller can
+// start the node even if the auxiliary index is unavailable.
+func (n *Node) prepareEventSearch() (_ eventSearchState, first int64, err error) {
+	if n.config.Storage.DiscardABCIResponses {
+		return nil, 0, nil
+	}
+	source, ok := n.stateStore.(sm.BootstrapStore)
+	if !ok {
+		return nil, 0, errors.New("event search requires a bootstrap state store")
+	}
+	db, err := n.eventSearchDBProvider(&DBContext{"event_search_v1", n.config})
+	if err != nil {
+		return nil, 0, fmt.Errorf("open event search index: %w", err)
+	}
+	index := eventsearch.New(db)
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, index.Close())
+		}
+	}()
+	state, err := source.Load()
+	if err != nil {
+		return nil, 0, err
+	}
+	ranges, err := index.Coverage()
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(ranges) > 0 && ranges[len(ranges)-1].MaxHeight > state.LastBlockHeight {
+		return nil, 0, errors.New("event search index is ahead of committed state; rebuild the event index")
+	}
+
+	first = n.blockStore.Base()
+	if len(ranges) > 0 {
+		if first == 0 || ranges[0].MinHeight < first {
+			first = ranges[0].MinHeight
+		}
+	} else if first != 1 && state.LastBlockHeight > 0 {
+		// Discover response-only history before consensus writes to the
+		// iterator's domain. A block store starting at 1 needs no scan.
+		retained, err := source.FirstRetainedABCIHeight(context.Background())
+		if err != nil {
+			return nil, 0, fmt.Errorf("locate retained ABCI responses: %w", err)
+		}
+		if retained != 0 {
+			first = retained
+		}
+	}
+	n.eventSearch = index
+	return source, first, nil
+}
