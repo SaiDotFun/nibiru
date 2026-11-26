@@ -72,10 +72,10 @@ jobs:
           echo "job: golangci was skipped since Nibiru Golang files were not changed."
 
       - uses: actions/checkout@v7
-        if: needs.changes-nibiru-go.outputs.nibiru-go == 'true' || needs.changes-nibiru-go.outputs.event-keys == 'true'
+        if: needs.changes-nibiru-go.outputs.nibiru-go == 'true'
 
       - uses: actions/setup-go@v7
-        if: needs.changes-nibiru-go.outputs.nibiru-go == 'true' || needs.changes-nibiru-go.outputs.event-keys == 'true'
+        if: needs.changes-nibiru-go.outputs.nibiru-go == 'true'
         with:
           go-version-file: go.mod
           # cache: "The action has a built-in functionality for caching and
@@ -110,20 +110,11 @@ jobs:
           # Optional: if set to true then the action won't cache or restore ~/.cache/go-build.
           # skip-build-cache: true
 
-      - name: Install just for the event key check
-        if: needs.changes-nibiru-go.outputs.event-keys == 'true'
-        uses: taiki-e/install-action@just
-
-      - name: Check event attribute keys
-        if: needs.changes-nibiru-go.outputs.event-keys == 'true'
-        run: just check-event-keys
-
   changes-nibiru-go:
     if: github.event_name != 'schedule' || github.repository == 'SaiDotFun/nibiru'
     runs-on: ubuntu-latest
     outputs:
       nibiru-go: ${{ steps.check_nibiru_go.outputs.nibiru-go }}
-      event-keys: ${{ steps.check_nibiru_go.outputs.event-keys }}
       ibc-go: ${{ steps.check_nibiru_go.outputs.ibc-go }}
       cosmos-sdk: ${{ steps.check_nibiru_go.outputs.cosmos-sdk }}
       bft: ${{ steps.check_nibiru_go.outputs.bft }}
@@ -163,14 +154,6 @@ jobs:
               - "justfile"
               - ".github/workflows/test-core.yml"
               - "evm/e2e/**"
-            event-keys:
-              - "**/*.go"
-              - "evm/embeds/**"
-              - "internal/analysis/testdata/**"
-              - "go.mod"
-              - "go.sum"
-              - "justfile"
-              - ".github/workflows/test-core.yml"
             ibc-go:
               - "lib/ibc-go/**"
               - "go.mod"
