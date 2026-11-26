@@ -1,0 +1,2 @@
+# Keep the upstream formatting when running rustfmt from Nibiru's workspace.
+max_width = 100
