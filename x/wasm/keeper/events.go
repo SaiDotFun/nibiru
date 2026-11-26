@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	"github.com/NibiruChain/nibiru/v2/lib/wasmvm/wvm"
 
 	sdkioerrors "cosmossdk.io/errors"
@@ -45,28 +44,28 @@ func newCustomEvents(evts wvm.Events, contractAddr sdk.AccAddress) (sdk.Events, 
 	return events, nil
 }
 
-// newContractEvent preserves the ordered attributes that deployed contracts
-// can observe in a submessage reply.
+// newContractEvent validates contract attributes before applying the SDK key rule.
 func newContractEvent(eventType string, customAttributes []wvm.EventAttribute, contractAddr sdk.AccAddress) (sdk.Event, error) {
-	attrs := make([]abci.EventAttribute, 0, len(customAttributes)+1)
-	attrs = append(attrs, abci.EventAttribute{Key: types.AttributeKeyContractAddr, Value: contractAddr.String()})
+	var empty sdk.Event
+	attrs := make([]sdk.Attribute, 0, len(customAttributes)+1)
+	attrs = append(attrs, sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddr.String()))
 	// append attributes from wasm to the sdk.Event
 	for _, l := range customAttributes {
 		// ensure key and value are non-empty (and trim what is there)
 		key := strings.TrimSpace(l.Key)
 		if len(key) == 0 {
-			return sdk.Event{}, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Empty attribute key. Value: %s", l.Value))
+			return empty, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Empty attribute key. Value: %s", l.Value))
 		}
 		value := strings.TrimSpace(l.Value)
 		// TODO: check if this is legal in the SDK - if it is, we can remove this check
 		if len(value) == 0 {
-			return sdk.Event{}, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Empty attribute value. Key: %s", key))
+			return empty, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Empty attribute value. Key: %s", key))
 		}
 		// and reserve all _* keys for our use (not contract)
 		if strings.HasPrefix(key, types.AttributeReservedPrefix) {
-			return sdk.Event{}, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Attribute key starts with reserved prefix %s: '%s'", types.AttributeReservedPrefix, key))
+			return empty, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Attribute key starts with reserved prefix %s: '%s'", types.AttributeReservedPrefix, key))
 		}
-		attrs = append(attrs, abci.EventAttribute{Key: key, Value: value})
+		attrs = append(attrs, sdk.NewAttribute(key, value))
 	}
-	return sdk.Event{Type: eventType, Attributes: attrs}, nil
+	return sdk.NewEvent(eventType, attrs...), nil
 }

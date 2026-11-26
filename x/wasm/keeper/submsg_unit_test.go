@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	wasmvm "github.com/NibiruChain/nibiru/v2/lib/wasmvm"
 	"github.com/NibiruChain/nibiru/v2/lib/wasmvm/wvm"
 
@@ -103,6 +104,73 @@ func TestDispatchSubMsgSuccessCase(t *testing.T) {
 	assert.Empty(t, sub.Data)
 	// as of v0.28.0 we strip out all events that don't come from wasm contracts. can't trust the sdk.
 	require.Len(t, sub.Events, 0)
+}
+
+func TestWasmSubmessageReplyAndIndexedEventUseLastAttributeValue(t *testing.T) {
+	ctx, keepers := CreateTestInput(t, false, ReflectFeatures)
+	keeper := keepers.WasmKeeper
+	uploader := keepers.Faucet.NewFundedRandomAccount(ctx, sdk.NewInt64Coin("denom", 100000))
+	codeID, _, err := keepers.ContractKeeper.Create(ctx, uploader, testdata.ReflectContractWasm, nil)
+	require.NoError(t, err)
+	parent, _, err := keepers.ContractKeeper.Instantiate(ctx, codeID, uploader, nil, []byte("{}"), "reply recorder", nil)
+	require.NoError(t, err)
+	child, _, err := keepers.ContractKeeper.Instantiate(ctx, codeID, uploader, nil, []byte("{}"), "event producer", nil)
+	require.NoError(t, err)
+	keeper.wasmVM = duplicateEventResponseEngine{WasmEngine: keeper.wasmVM, child: child.String()}
+
+	const replyID = 7
+	msg, err := json.Marshal(testdata.ReflectHandleMsg{ReflectSubMsg: &testdata.ReflectSubPayload{
+		Msgs: []wvm.SubMsg{{
+			ID:      replyID,
+			ReplyOn: wvm.ReplySuccess,
+			Msg: wvm.CosmosMsg{Wasm: &wvm.WasmMsg{Execute: &wvm.ExecuteMsg{
+				ContractAddr: child.String(),
+				Msg:          []byte("{}"),
+			}}},
+		}},
+	}})
+	require.NoError(t, err)
+	em := sdk.NewEventManager()
+	_, err = keepers.ContractKeeper.Execute(ctx.WithEventManager(em), parent, uploader, msg, nil)
+	require.NoError(t, err)
+
+	query, err := json.Marshal(testdata.ReflectQueryMsg{SubMsgResult: &testdata.SubCall{ID: replyID}})
+	require.NoError(t, err)
+	stored, err := keeper.QuerySmart(ctx, parent, query)
+	require.NoError(t, err)
+	var reply wvm.Reply
+	require.NoError(t, json.Unmarshal(stored, &reply))
+	require.NotNil(t, reply.Result.Ok)
+	require.Contains(t, []wvm.Event(reply.Result.Ok.Events), wvm.Event{Type: "wasm", Attributes: []wvm.EventAttribute{
+		{Key: "_contract_address", Value: child.String()},
+		{Key: "label", Value: "second"},
+		{Key: "other", Value: "middle"},
+	}})
+	require.Contains(t, sdk.MarkEventsToIndex(em.ABCIEvents(), nil), abci.Event{Type: "wasm", Attributes: []abci.EventAttribute{
+		{Key: "_contract_address", Value: child.String(), Index: true},
+		{Key: "label", Value: "second", Index: true},
+		{Key: "other", Value: "middle", Index: true},
+	}})
+}
+
+// Inject the child's result while running the parent and its reply in the real VM.
+type duplicateEventResponseEngine struct {
+	types.WasmEngine
+	child string
+}
+
+func (e duplicateEventResponseEngine) Execute(checksum wasmvm.Checksum, env wvm.Env, info wvm.MessageInfo, msg []byte,
+	store wasmvm.KVStore, api wasmvm.GoAPI, querier wasmvm.Querier, meter wasmvm.GasMeter,
+	limit uint64, deserCost wvm.UFraction,
+) (*wvm.Response, uint64, error) {
+	if env.Contract.Address == e.child {
+		return &wvm.Response{Attributes: []wvm.EventAttribute{
+			{Key: " label ", Value: "first"},
+			{Key: "other", Value: "middle"},
+			{Key: "label", Value: "second"},
+		}}, 0, nil
+	}
+	return e.WasmEngine.Execute(checksum, env, info, msg, store, api, querier, meter, limit, deserCost)
 }
 
 func TestDispatchSubMsgErrorHandling(t *testing.T) {

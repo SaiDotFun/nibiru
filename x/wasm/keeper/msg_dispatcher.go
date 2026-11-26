@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
-
 	"github.com/NibiruChain/nibiru/v2/lib/wasmvm/wvm"
 
 	sdkioerrors "cosmossdk.io/errors"
@@ -206,20 +204,20 @@ func filterEvents(events []sdk.Event) []sdk.Event {
 func sdkEventsToWasmVMEvents(events []sdk.Event) []wvm.Event {
 	res := make([]wvm.Event, len(events))
 	for i, ev := range events {
+		// SDK messages can forward raw ABCI events. Apply the same rule at
+		// the reply boundary before exposing attributes to the calling contract.
+		attrs := make([]sdk.Attribute, len(ev.Attributes))
+		for j, attr := range ev.Attributes {
+			attrs[j] = sdk.NewAttribute(attr.Key, attr.Value)
+		}
+		unique := sdk.NewEvent(ev.Type, attrs...)
+		wasmAttrs := make([]wvm.EventAttribute, len(unique.Attributes))
+		for j, attr := range unique.Attributes {
+			wasmAttrs[j] = wvm.EventAttribute{Key: attr.Key, Value: attr.Value}
+		}
 		res[i] = wvm.Event{
 			Type:       ev.Type,
-			Attributes: sdkAttributesToWasmVMAttributes(ev.Attributes),
-		}
-	}
-	return res
-}
-
-func sdkAttributesToWasmVMAttributes(attrs []abci.EventAttribute) []wvm.EventAttribute {
-	res := make([]wvm.EventAttribute, len(attrs))
-	for i, attr := range attrs {
-		res[i] = wvm.EventAttribute{
-			Key:   attr.Key,
-			Value: attr.Value,
+			Attributes: wasmAttrs,
 		}
 	}
 	return res

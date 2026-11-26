@@ -65,7 +65,7 @@ func TestConvertToErrorEvents(t *testing.T) {
 			},
 		},
 		{
-			"success: repeated attributes preserve value order",
+			"success: repeated keys keep their first position and last value",
 			func() {
 				events = sdk.Events{sdk.Event{Type: "testevent", Attributes: []abci.EventAttribute{
 					{Key: "label", Value: "first"},
@@ -73,9 +73,8 @@ func TestConvertToErrorEvents(t *testing.T) {
 					{Key: "label", Value: "second"},
 				}}}
 				expEvents = sdk.Events{sdk.Event{Type: types.ErrorAttributeKeyPrefix + "testevent", Attributes: []abci.EventAttribute{
-					{Key: types.ErrorAttributeKeyPrefix + "label", Value: "first"},
-					{Key: types.ErrorAttributeKeyPrefix + "other", Value: "middle"},
 					{Key: types.ErrorAttributeKeyPrefix + "label", Value: "second"},
+					{Key: types.ErrorAttributeKeyPrefix + "other", Value: "middle"},
 				}}}
 			},
 		},

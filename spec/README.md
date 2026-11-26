@@ -23,3 +23,4 @@ is not part of the Nibiru website documentation.
 - [06. Sai Pulse block-hook integration](./06-sai-pulse.md)
 - [07. Protobuf state breaks](./07-protobuf-state-breaks.md)
 - [08. Contract-owned upgrades](./08-contract-owned-upgrades.md)
+- [09. Event attribute keys and Wasm compatibility](./09-event-attribute-keys.md)
