@@ -11,6 +11,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/validator"
+
 	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	coretypes "github.com/NibiruChain/nibiru/v2/bft/rpc/core/types"
 	rpcclient "github.com/NibiruChain/nibiru/v2/bft/rpc/jsonrpc/client"
@@ -18,11 +24,6 @@ import (
 	"github.com/NibiruChain/nibiru/v2/bft/state/txindex/kv"
 	"github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/client"
 	"github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/client/flags"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
-	"github.com/vektah/gqlparser/v2"
-	"github.com/vektah/gqlparser/v2/ast"
-	"github.com/vektah/gqlparser/v2/validator"
 )
 
 //go:embed query_search.graphqls
@@ -128,7 +129,7 @@ can match any stored value, including a later occurrence.`,
 }
 
 func readSearchDocument(cmd *cobra.Command, file string) ([]byte, error) {
-	var reader io.Reader = cmd.InOrStdin()
+	reader := cmd.InOrStdin()
 	if file != "-" {
 		f, err := os.Open(file)
 		if err != nil {
