@@ -153,7 +153,7 @@ func TestQuerySearchDefaultHelp(t *testing.T) {
 	cmd.SetOut(out)
 	cmd.SetArgs([]string{"search"})
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
-	for _, example := range []string{"txs(where:", "events(where:", "--gql", "--file", "--schema", "supports structured search"} {
+	for _, example := range []string{"txs(where:", "events(where:", "--gql", "--file", "--schema", "supports structured search", "txs field searches only indexed attributes"} {
 		require.Contains(t, out.String(), example)
 	}
 

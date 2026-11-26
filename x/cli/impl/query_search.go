@@ -49,8 +49,8 @@ The events field requires the node's event index.
 The CLI prints compact JSON. The nodes selection becomes a top-level array.
 Selected page metadata appears beside it, such as eventsNextCursor, eventsRange,
 and txsTotalCount. Aliases change the corresponding output names.
-Event attributes show the first stored value for each key. Historical filters
-can match any stored value, including a later occurrence.`,
+Event output shows the first stored value for each key. Search filters can
+match a later occurrence. The txs field searches only indexed attributes.`,
 		Example: fmt.Sprintf(`  # Get transaction hashes and result codes at block height 132.
   nibiru %[1]s search --gql '{
     txs(where: {height: {gte: 132, lte: 132}}) {
