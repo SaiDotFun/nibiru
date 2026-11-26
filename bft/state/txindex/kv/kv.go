@@ -555,6 +555,12 @@ func (txi *TxIndex) matchRange(
 
 	matches := make(map[eventMatch]struct{})
 
+	// A slash can be part of either the composite key or the indexed value.
+	// Preserve legacy range behavior until the index can distinguish them.
+	if strings.Contains(attribute, tagKeySeparator) {
+		return matches
+	}
+
 	it, err := dbm.IteratePrefix(txi.store, startKey(attribute))
 	if err != nil {
 		panic(err)

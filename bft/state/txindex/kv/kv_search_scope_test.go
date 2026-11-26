@@ -79,6 +79,7 @@ func TestSearchByTransactionLiteralAttributes(t *testing.T) {
 	tx := txResultWithEvents([]abci.Event{
 		{Type: "memo", Attributes: []abci.EventAttribute{
 			{Key: "label", Value: "desk/sai", Index: true},
+			{Key: "label", Value: "desk/9", Index: true},
 			{Key: "path", Value: "/root", Index: true},
 			{Key: "empty", Value: "", Index: true},
 			{Key: "note", Value: "  desk ", Index: true},
@@ -93,6 +94,8 @@ func TestSearchByTransactionLiteralAttributes(t *testing.T) {
 	}{
 		{"memo.label = 'desk'", false},
 		{"memo.label = 'desk/sai'", true},
+		{"memo.label = 'desk/9'", true},
+		{"memo.label/desk > 1", false},
 		{"memo.label CONTAINS '/sai'", true},
 		{"memo.path = ''", false},
 		{"memo.empty = ''", true},
