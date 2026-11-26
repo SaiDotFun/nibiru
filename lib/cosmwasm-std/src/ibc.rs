@@ -10,7 +10,7 @@ use crate::addresses::Addr;
 use crate::binary::Binary;
 use crate::coin::Coin;
 use crate::errors::StdResult;
-use crate::results::{Attribute, CosmosMsg, Empty, Event, SubMsg};
+use crate::results::{set_attribute, Attribute, CosmosMsg, Empty, Event, SubMsg};
 use crate::serde::to_json_binary;
 use crate::timestamp::Timestamp;
 
@@ -520,8 +520,9 @@ impl<T> IbcBasicResponse<T> {
     }
 
     /// Add an attribute included in the main `wasm` event.
+    /// A matching key keeps its position and takes the new value.
     pub fn add_attribute(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.attributes.push(Attribute::new(key, value));
+        set_attribute(&mut self.attributes, Attribute::new(key, value));
         self
     }
 
@@ -550,6 +551,7 @@ impl<T> IbcBasicResponse<T> {
     }
 
     /// Bulk add attributes included in the main `wasm` event.
+    /// Each matching key keeps its position and takes the new value.
     ///
     /// Anything that can be turned into an iterator and yields something
     /// that can be converted into an `Attribute` is accepted.
@@ -571,7 +573,9 @@ impl<T> IbcBasicResponse<T> {
         mut self,
         attrs: impl IntoIterator<Item = A>,
     ) -> Self {
-        self.attributes.extend(attrs.into_iter().map(A::into));
+        for attr in attrs {
+            set_attribute(&mut self.attributes, attr.into());
+        }
         self
     }
 
@@ -683,8 +687,9 @@ impl<T> IbcReceiveResponse<T> {
     }
 
     /// Add an attribute included in the main `wasm` event.
+    /// A matching key keeps its position and takes the new value.
     pub fn add_attribute(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.attributes.push(Attribute::new(key, value));
+        set_attribute(&mut self.attributes, Attribute::new(key, value));
         self
     }
 
@@ -713,6 +718,7 @@ impl<T> IbcReceiveResponse<T> {
     }
 
     /// Bulk add attributes included in the main `wasm` event.
+    /// Each matching key keeps its position and takes the new value.
     ///
     /// Anything that can be turned into an iterator and yields something
     /// that can be converted into an `Attribute` is accepted.
@@ -734,7 +740,9 @@ impl<T> IbcReceiveResponse<T> {
         mut self,
         attrs: impl IntoIterator<Item = A>,
     ) -> Self {
-        self.attributes.extend(attrs.into_iter().map(A::into));
+        for attr in attrs {
+            set_attribute(&mut self.attributes, attr.into());
+        }
         self
     }
 
@@ -785,6 +793,23 @@ mod tests {
     use super::*;
     use serde_json_wasm::to_string;
 
+    #[test]
+    fn ibc_response_builders_replace_matching_keys_in_place() {
+        let initial = [("first", "old"), ("second", "old")];
+        let expected = vec![("first", "new"), ("second", "new")];
+
+        let basic = IbcBasicResponse::<Empty>::new()
+            .add_attributes(initial)
+            .add_attribute("second", "new")
+            .add_attributes([("first", "new")]);
+        assert_eq!(basic.attributes, expected);
+
+        let receive = IbcReceiveResponse::<Empty>::new()
+            .add_attributes(initial)
+            .add_attribute("second", "new")
+            .add_attributes([("first", "new")]);
+        assert_eq!(receive.attributes, expected);
+    }
     #[test]
     // added this to check json format for go compat, as I was unsure how some messages are snake encoded
     fn serialize_msg() {
