@@ -8,6 +8,7 @@ import (
 
 	"github.com/NibiruChain/nibiru/v2/lib/wasmvm/wvm"
 
+	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	sdk "github.com/NibiruChain/nibiru/v2/lib/cosmos-sdk/types"
 
 	"github.com/NibiruChain/nibiru/v2/x/wasm/types"
@@ -82,6 +83,20 @@ func TestNewCustomEvents(t *testing.T) {
 				sdk.NewAttribute("_contract_address", myContract.String()),
 				sdk.NewAttribute("myKey", "myVal"),
 				sdk.NewAttribute("myOtherKey", "myOtherVal"))},
+		},
+		"repeated attributes survive whitespace trimming": {
+			src: wvm.Events{{
+				Type: "foo",
+				Attributes: []wvm.EventAttribute{
+					{Key: " label ", Value: "first"},
+					{Key: "label", Value: "second"},
+				},
+			}},
+			exp: sdk.Events{sdk.Event{Type: "wasm-foo", Attributes: []abci.EventAttribute{
+				{Key: "_contract_address", Value: myContract.String()},
+				{Key: "label", Value: "first"},
+				{Key: "label", Value: "second"},
+			}}},
 		},
 		"multiple events": {
 			src: wvm.Events{{
@@ -253,6 +268,17 @@ func TestNewWasmModuleEvent(t *testing.T) {
 			exp: sdk.Events{sdk.NewEvent("wasm",
 				sdk.NewAttribute("_contract_address", myContract.String()),
 				sdk.NewAttribute("my-real-key", "some-val"))},
+		},
+		"repeated attributes survive whitespace trimming": {
+			src: []wvm.EventAttribute{
+				{Key: " label ", Value: "first"},
+				{Key: "label", Value: "second"},
+			},
+			exp: sdk.Events{sdk.Event{Type: "wasm", Attributes: []abci.EventAttribute{
+				{Key: "_contract_address", Value: myContract.String()},
+				{Key: "label", Value: "first"},
+				{Key: "label", Value: "second"},
+			}}},
 		},
 		"empty elements": {
 			src:     make([]wvm.EventAttribute, 10),

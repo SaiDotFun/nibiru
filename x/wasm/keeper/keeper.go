@@ -200,15 +200,11 @@ func (k Keeper) create(
 	codeInfo := types.NewCodeInfo(checksum, creator, *instantiateAccess)
 	k.storeCodeInfo(ctx, codeID, codeInfo)
 
-	evt := sdk.NewEvent(
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeStoreCode,
 		sdk.NewAttribute(types.AttributeKeyChecksum, hex.EncodeToString(checksum)),
 		sdk.NewAttribute(types.AttributeKeyCodeID, strconv.FormatUint(codeID, 10)), // last element to be compatible with scripts
-	)
-	for _, f := range strings.Split(report.RequiredCapabilities, ",") {
-		evt.AppendAttributes(sdk.NewAttribute(types.AttributeKeyRequiredCapability, strings.TrimSpace(f)))
-	}
-	ctx.EventManager().EmitEvent(evt)
+	))
 
 	return codeID, checksum, nil
 }
@@ -1046,16 +1042,14 @@ func (k Keeper) setAccessConfig(ctx sdk.Context, codeID uint64, caller sdk.AccAd
 
 	info.InstantiateConfig = newConfig
 	k.storeCodeInfo(ctx, codeID, *info)
-	evt := sdk.NewEvent(
-		types.EventTypeUpdateCodeAccessConfig,
+	attrs := []sdk.Attribute{
 		sdk.NewAttribute(types.AttributeKeyCodePermission, newConfig.Permission.String()),
 		sdk.NewAttribute(types.AttributeKeyCodeID, strconv.FormatUint(codeID, 10)),
-	)
-	if addrs := newConfig.AllAuthorizedAddresses(); len(addrs) != 0 {
-		attr := sdk.NewAttribute(types.AttributeKeyAuthorizedAddresses, strings.Join(addrs, ","))
-		evt.Attributes = append(evt.Attributes, attr.ToKVPair())
 	}
-	ctx.EventManager().EmitEvent(evt)
+	if addrs := newConfig.AllAuthorizedAddresses(); len(addrs) != 0 {
+		attrs = append(attrs, sdk.NewAttribute(types.AttributeKeyAuthorizedAddresses, strings.Join(addrs, ",")))
+	}
+	ctx.EventManager().EmitEvent(sdk.NewEvent(types.EventTypeUpdateCodeAccessConfig, attrs...))
 	return nil
 }
 

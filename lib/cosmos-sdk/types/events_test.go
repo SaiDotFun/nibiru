@@ -22,6 +22,29 @@ func TestEventsTestSuite(t *testing.T) {
 	suite.Run(t, new(eventsTestSuite))
 }
 
+func (s *eventsTestSuite) TestNewEventKeepsLastValueInFirstPosition() {
+	attrs := []sdk.Attribute{
+		sdk.NewAttribute("a", "first"),
+		sdk.NewAttribute("b", "middle"),
+		sdk.NewAttribute("a", ""),
+		sdk.NewAttribute("A", "case-sensitive"),
+	}
+	event := sdk.NewEvent("transfer", attrs...)
+	want := sdk.Event{Type: "transfer", Attributes: []abci.EventAttribute{
+		{Key: "a", Value: ""},
+		{Key: "b", Value: "middle"},
+		{Key: "A", Value: "case-sensitive"},
+	}}
+	attrs[2].Value = "mutated input"
+	s.Require().Equal(want, event)
+	s.Require().Equal(sdk.Event{Type: "empty"}, sdk.NewEvent("empty"))
+
+	em := sdk.NewEventManager()
+	em.EmitEvent(event)
+	em.EmitEvent(sdk.NewEvent("transfer", sdk.NewAttribute("a", "different")))
+	s.Require().Equal(sdk.Events{want, {Type: "transfer", Attributes: []abci.EventAttribute{{Key: "a", Value: "different"}}}}, em.Events())
+}
+
 func (s *eventsTestSuite) TestAppendEvents() {
 	e1 := sdk.NewEvent("transfer", sdk.NewAttribute("sender", "foo"))
 	e2 := sdk.NewEvent("transfer", sdk.NewAttribute("sender", "bar"))

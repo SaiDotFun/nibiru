@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	abci "github.com/NibiruChain/nibiru/v2/bft/abci/types"
 	"github.com/NibiruChain/nibiru/v2/lib/wasmvm/wvm"
 
 	sdkioerrors "cosmossdk.io/errors"
@@ -16,13 +17,13 @@ import (
 // newWasmModuleEvent creates with wasm module event for interacting with the given contract. Adds custom attributes
 // to this event.
 func newWasmModuleEvent(customAttributes []wvm.EventAttribute, contractAddr sdk.AccAddress) (sdk.Events, error) {
-	attrs, err := contractSDKEventAttributes(customAttributes, contractAddr)
+	event, err := newContractEvent(types.WasmModuleEventType, customAttributes, contractAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	// each wasm invocation always returns one sdk.Event
-	return sdk.Events{sdk.NewEvent(types.WasmModuleEventType, attrs...)}, nil
+	return sdk.Events{event}, nil
 }
 
 const eventTypeMinLength = 2
@@ -35,35 +36,37 @@ func newCustomEvents(evts wvm.Events, contractAddr sdk.AccAddress) (sdk.Events, 
 		if len(typ) <= eventTypeMinLength {
 			return nil, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Event type too short: '%s'", typ))
 		}
-		attributes, err := contractSDKEventAttributes(e.Attributes, contractAddr)
+		event, err := newContractEvent(types.CustomContractEventPrefix+typ, e.Attributes, contractAddr)
 		if err != nil {
 			return nil, err
 		}
-		events = append(events, sdk.NewEvent(fmt.Sprintf("%s%s", types.CustomContractEventPrefix, typ), attributes...))
+		events = append(events, event)
 	}
 	return events, nil
 }
 
-// convert and add contract address issuing this event
-func contractSDKEventAttributes(customAttributes []wvm.EventAttribute, contractAddr sdk.AccAddress) ([]sdk.Attribute, error) {
-	attrs := []sdk.Attribute{sdk.NewAttribute(types.AttributeKeyContractAddr, contractAddr.String())}
+// newContractEvent preserves the ordered attributes that deployed contracts
+// can observe in a submessage reply.
+func newContractEvent(eventType string, customAttributes []wvm.EventAttribute, contractAddr sdk.AccAddress) (sdk.Event, error) {
+	attrs := make([]abci.EventAttribute, 0, len(customAttributes)+1)
+	attrs = append(attrs, abci.EventAttribute{Key: types.AttributeKeyContractAddr, Value: contractAddr.String()})
 	// append attributes from wasm to the sdk.Event
 	for _, l := range customAttributes {
 		// ensure key and value are non-empty (and trim what is there)
 		key := strings.TrimSpace(l.Key)
 		if len(key) == 0 {
-			return nil, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Empty attribute key. Value: %s", l.Value))
+			return sdk.Event{}, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Empty attribute key. Value: %s", l.Value))
 		}
 		value := strings.TrimSpace(l.Value)
 		// TODO: check if this is legal in the SDK - if it is, we can remove this check
 		if len(value) == 0 {
-			return nil, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Empty attribute value. Key: %s", key))
+			return sdk.Event{}, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Empty attribute value. Key: %s", key))
 		}
 		// and reserve all _* keys for our use (not contract)
 		if strings.HasPrefix(key, types.AttributeReservedPrefix) {
-			return nil, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Attribute key starts with reserved prefix %s: '%s'", types.AttributeReservedPrefix, key))
+			return sdk.Event{}, sdkioerrors.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Attribute key starts with reserved prefix %s: '%s'", types.AttributeReservedPrefix, key))
 		}
-		attrs = append(attrs, sdk.NewAttribute(key, value))
+		attrs = append(attrs, abci.EventAttribute{Key: key, Value: value})
 	}
-	return attrs, nil
+	return sdk.Event{Type: eventType, Attributes: attrs}, nil
 }

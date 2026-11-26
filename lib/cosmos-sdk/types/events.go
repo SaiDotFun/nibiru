@@ -55,8 +55,7 @@ func (em *EventManager) TruncateEvents(mark int) int {
 	return len(em.events)
 }
 
-// EmitEvent stores a single Event object.
-// Deprecated: Use EmitTypedEvent
+// EmitEvent stores a single Event with its existing attribute order and values.
 func (em *EventManager) EmitEvent(event Event) {
 	em.events = em.events.AppendEvent(event)
 }
@@ -180,16 +179,24 @@ type (
 	Events []Event
 )
 
-// NewEvent creates a new Event object with a given type and slice of one or more
-// attributes.
+// NewEvent constructs an event with one attribute per key. A repeated key
+// keeps its first position and takes its last value.
 func NewEvent(ty string, attrs ...Attribute) Event {
-	e := Event{Type: ty}
-
-	for _, attr := range attrs {
-		e.Attributes = append(e.Attributes, attr.ToKVPair())
+	event := Event{Type: ty}
+	if len(attrs) == 0 {
+		return event
 	}
-
-	return e
+	event.Attributes = make([]abci.EventAttribute, 0, len(attrs))
+	positions := make(map[string]int, len(attrs))
+	for _, attr := range attrs {
+		if pos, exists := positions[attr.Key]; exists {
+			event.Attributes[pos] = attr.ToKVPair()
+			continue
+		}
+		positions[attr.Key] = len(event.Attributes)
+		event.Attributes = append(event.Attributes, attr.ToKVPair())
+	}
+	return event
 }
 
 // NewAttribute returns a new key/value Attribute object.
