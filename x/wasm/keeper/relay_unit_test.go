@@ -411,7 +411,6 @@ func TestOnRecvPacket(t *testing.T) {
 					sdk.NewAttribute("Foo", "Bar")),
 				sdk.Event{Type: "wasm-custom", Attributes: []abci.EventAttribute{
 					{Key: types.AttributeKeyContractAddr, Value: example.Contract.String()},
-					{Key: "message", Value: "to rudi"},
 					{Key: "message", Value: "to sophia"},
 				}},
 			},

@@ -1,28 +1,26 @@
 # Event Attribute Keys and Wasm Compatibility
 
-- Status: Proposed follow-up to [PR #2972][pr]
+- Status: Implementation for a chain upgrade following [PR #2972][pr]
 - Code scope: `lib/cosmos-sdk/types`, `x/wasm/keeper`, and IBC event forwarding
 - Source of truth: the [SDK constructor][sdk], [Wasm response adapter][adapter],
   and [submessage dispatcher][dispatch]
 
 ## Decision
 
-Require one value per attribute key when Nibiru code constructs an event
-with `sdk.NewEvent`. Preserve the validated attribute list when forwarding
-events supplied by a contract or another module. Separate events can share
-the same type and the same keys.
+Require one value per attribute key in newly emitted Nibiru events and in
+Wasm submessage replies. Separate events can share the same type and keys.
 
-`sdk.NewEvent` keeps a key in the position where it first appeared and uses
-its last value. `EmitEvent` appends the event as supplied. Protobuf-typed
-SDK events already construct attributes from an object with one value per
-field. The Go analyzer checks duplicate constant keys and direct bypasses
-in its scoped packages. The constructor handles keys computed at runtime.
+`sdk.NewEvent` keeps a key in its first position and uses its last value.
+`EmitEvent` appends the event as supplied. The ABCI output step applies the
+same key rule to raw forwarded events as it sets the index flags. The Go
+analyzer flags duplicate constant keys and direct bypasses in its scoped
+packages. The constructor handles keys computed at runtime.
 
-| Source | Event Construction | Compatibility |
+| Source | Event Construction | Behavior |
 | --- | --- | --- |
 | Native Go module | `sdk.NewEvent` | One value per key, with deterministic order |
-| Wasm contract response | Keeper adapter `newContractEvent` | Existing trimming, validation, and repeated values |
-| IBC error forwarding | Copy and prefix the supplied attributes | Existing values and order, including repetitions |
+| Wasm contract response | Keeper validation, then `sdk.NewEvent` | Keys and values are trimmed and validated before duplicate keys collapse |
+| IBC error forwarding | Prefix keys, then `sdk.NewEvent` | One value per prefixed key |
 
 ## A Code Upload and a Contract Reply
 
@@ -36,38 +34,31 @@ last for scripts that read it by position. [Code-upload test][store-test]
 An executing contract supplies a list of key-value pairs. The keeper trims
 leading and trailing whitespace before validating each key and value. A
 contract can supply the same key twice directly, or two spellings can become
-equal after trimming. For example, `(" label ", "first")` followed by
-`("label", "second")` becomes `("label", "first")` followed by
-`("label", "second")`. The keeper adds `_contract_address` and preserves
-both values. [Response conversion tests][adapter-test]
+equal after trimming. The pairs `(" label ", "first")` and
+`("label", "second")` yield one `label=second`. The keeper adds
+`_contract_address`. Every input pair must pass validation, including
+a value that a later pair would replace. Event gas uses the original contract
+response. [Response conversion tests][adapter-test]
 
-When contract A calls contract B as a submessage and requests a reply, the
+If contract A calls contract B as a Wasm submessage and requests a reply, the
 dispatcher includes B's eligible events in `SubMsgResponse.Events` on success.
-For a Wasm submessage, the dispatcher removes `message` events and sorts
-attributes stably by key. The two `label` entries keep their relative order.
-A can read the first value, both values, or their count and use that result
-to update state. Changing the converter to use `sdk.NewEvent` would give A
-only `label=second`. [Reply dispatch test][dispatch-test]
+The dispatcher removes `message` events and sorts reply attributes by key.
+A now sees only `label=second`. The reply converter applies the same rule
+when a message handler passes through a raw event. [Reply dispatch test][dispatch-test]
 
-## Follow-up
+## Contract Schemas and Upgrade
 
-- Use `sdk.NewEvent` or the typed SDK emitter for new events the Wasm keeper
-  owns. Keep the contract response adapter for lists supplied by guests.
-- For new or revised Nibiru-owned contract event schemas, define one value
-  per key in the producer and test the emitted attributes. Use a named
-  collection field or separate events when a new schema needs multiple
-  values. Keep existing event schemas compatible with their readers.
-- Add a keeper integration test in which one contract returns two values for
-  a key and another reads them in `reply`. Compare the reply input and
-  emitted attributes with literal expectations. Keep the `store_code` and
-  IBC forwarding regressions as separate checks.
+For new or revised event schemas, use one value per key. Use a named
+collection field or separate events when a schema needs multiple values.
+Use `sdk.NewEvent` or the typed SDK emitter for events that the Go keeper
+constructs itself.
 
-The Go Cosmos SDK, Wasm keeper, and WasmVM runtime are in the Nibiru
-repository. The Rust contract library `cosmwasm-std` is a dependency. Changes
-to its builders reach contracts compiled against the changed crate. Changing
-the Go adapter reaches already-deployed contracts, so any future change to
-the reply semantics belongs in an explicit chain upgrade with contract
-compatibility tests. [WasmVM layout][wasmvm] · [CosmWasm event type][std]
+The Go Cosmos SDK, Wasm keeper, and WasmVM runtime live in the Nibiru
+repository. The Rust contract library `cosmwasm-std` is a dependency. The Go
+keeper enforces the convention for previously deployed bytecode as well as
+new builds. Activate via a coordinated chain upgrade because a contract
+that reads repeated reply attributes can change its state or return a
+different result. [WasmVM layout][wasmvm] · [CosmWasm event type][std]
 
 ABCI event attributes remain an ordered list. The event search CLI's compact
 object shows the first stored value for a repeated key. That projection does

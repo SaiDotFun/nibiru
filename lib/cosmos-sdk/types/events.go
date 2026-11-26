@@ -189,14 +189,18 @@ func NewEvent(ty string, attrs ...Attribute) Event {
 	event.Attributes = make([]abci.EventAttribute, 0, len(attrs))
 	positions := make(map[string]int, len(attrs))
 	for _, attr := range attrs {
-		if pos, exists := positions[attr.Key]; exists {
-			event.Attributes[pos] = attr.ToKVPair()
-			continue
-		}
-		positions[attr.Key] = len(event.Attributes)
-		event.Attributes = append(event.Attributes, attr.ToKVPair())
+		event.Attributes = setEventAttribute(event.Attributes, positions, attr.ToKVPair())
 	}
 	return event
+}
+
+func setEventAttribute(attrs []abci.EventAttribute, positions map[string]int, attr abci.EventAttribute) []abci.EventAttribute {
+	if pos, exists := positions[attr.Key]; exists {
+		attrs[pos] = attr
+		return attrs
+	}
+	positions[attr.Key] = len(attrs)
+	return append(attrs, attr)
 }
 
 // NewAttribute returns a new key/value Attribute object.
@@ -333,8 +337,8 @@ func StringifyEvents(events []abci.Event) StringEvents {
 	return res
 }
 
-// MarkEventsToIndex returns the set of ABCI events, where each event's attribute
-// has it's index value marked based on the provided set of events to index.
+// MarkEventsToIndex copies ABCI events, applying the NewEvent key rule and
+// marking each attribute according to the supplied index set.
 func MarkEventsToIndex(events []abci.Event, indexSet map[string]struct{}) []abci.Event {
 	indexAll := len(indexSet) == 0
 	updatedEvents := make([]abci.Event, len(events))
@@ -342,18 +346,14 @@ func MarkEventsToIndex(events []abci.Event, indexSet map[string]struct{}) []abci
 	for i, e := range events {
 		updatedEvent := abci.Event{
 			Type:       e.Type,
-			Attributes: make([]abci.EventAttribute, len(e.Attributes)),
+			Attributes: make([]abci.EventAttribute, 0, len(e.Attributes)),
 		}
+		positions := make(map[string]int, len(e.Attributes))
 
-		for j, attr := range e.Attributes {
+		for _, attr := range e.Attributes {
 			_, index := indexSet[fmt.Sprintf("%s.%s", e.Type, attr.Key)]
-			updatedAttr := abci.EventAttribute{
-				Key:   attr.Key,
-				Value: attr.Value,
-				Index: index || indexAll,
-			}
-
-			updatedEvent.Attributes[j] = updatedAttr
+			attr.Index = index || indexAll
+			updatedEvent.Attributes = setEventAttribute(updatedEvent.Attributes, positions, attr)
 		}
 
 		updatedEvents[i] = updatedEvent

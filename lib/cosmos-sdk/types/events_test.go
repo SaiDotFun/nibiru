@@ -251,6 +251,18 @@ func (s *eventsTestSuite) TestMarkEventsToIndex() {
 		indexSet map[string]struct{}
 		expected []abci.Event
 	}{
+		"raw repeated key retains position and index selection": {
+			events: []abci.Event{{Type: "message", Attributes: []abci.EventAttribute{
+				{Key: "sender", Value: "first", Index: true},
+				{Key: "recipient", Value: "middle", Index: true},
+				{Key: "sender", Value: "second"},
+			}}},
+			indexSet: map[string]struct{}{"message.sender": {}},
+			expected: []abci.Event{{Type: "message", Attributes: []abci.EventAttribute{
+				{Key: "sender", Value: "second", Index: true},
+				{Key: "recipient", Value: "middle"},
+			}}},
+		},
 		"empty index set": {
 			events: events,
 			expected: []abci.Event{

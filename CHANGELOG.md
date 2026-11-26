@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### State-Machine Breaking Changes
 
+- Apply Nibiru's event attribute-key rule to Wasm replies and newly emitted
+  events. After trimming Wasm attributes, a repeated key keeps its first
+  position and takes its last value. A deployed contract's reply can now see
+  just that value where it previously received several. Activate in a
+  coordinated chain upgrade. Historical indexed events retain their values.
 - Change `/eth.evm.v1.Query/Balance` so the mainnet alias `USDC` selects Sai
   USDC and `USDC.e` selects legacy Stargate USDC. This changes balances visible
   to Wasm contracts through Stargate during transaction execution and can

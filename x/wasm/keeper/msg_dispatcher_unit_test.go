@@ -322,7 +322,6 @@ func TestDispatchSubmessages(t *testing.T) {
 					}
 					wantAttributes := []wvm.EventAttribute{
 						{Key: "other", Value: "data"},
-						{Key: "random", Value: "first"},
 						{Key: "random", Value: "second"},
 					}
 					if !slices.Equal(wantAttributes, res.Events[1].Attributes) {

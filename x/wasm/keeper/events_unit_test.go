@@ -84,7 +84,7 @@ func TestNewCustomEvents(t *testing.T) {
 				sdk.NewAttribute("myKey", "myVal"),
 				sdk.NewAttribute("myOtherKey", "myOtherVal"))},
 		},
-		"repeated attributes survive whitespace trimming": {
+		"repeated keys collapse after whitespace trimming": {
 			src: wvm.Events{{
 				Type: "foo",
 				Attributes: []wvm.EventAttribute{
@@ -94,7 +94,6 @@ func TestNewCustomEvents(t *testing.T) {
 			}},
 			exp: sdk.Events{sdk.Event{Type: "wasm-foo", Attributes: []abci.EventAttribute{
 				{Key: "_contract_address", Value: myContract.String()},
-				{Key: "label", Value: "first"},
 				{Key: "label", Value: "second"},
 			}}},
 		},
@@ -269,16 +268,22 @@ func TestNewWasmModuleEvent(t *testing.T) {
 				sdk.NewAttribute("_contract_address", myContract.String()),
 				sdk.NewAttribute("my-real-key", "some-val"))},
 		},
-		"repeated attributes survive whitespace trimming": {
+		"repeated keys collapse after whitespace trimming": {
 			src: []wvm.EventAttribute{
 				{Key: " label ", Value: "first"},
 				{Key: "label", Value: "second"},
 			},
 			exp: sdk.Events{sdk.Event{Type: "wasm", Attributes: []abci.EventAttribute{
 				{Key: "_contract_address", Value: myContract.String()},
-				{Key: "label", Value: "first"},
 				{Key: "label", Value: "second"},
 			}}},
+		},
+		"invalid value cannot be overwritten": {
+			src: []wvm.EventAttribute{
+				{Key: "label", Value: "  "},
+				{Key: "label", Value: "second"},
+			},
+			isError: true,
 		},
 		"empty elements": {
 			src:     make([]wvm.EventAttribute, 10),

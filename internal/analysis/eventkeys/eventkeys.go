@@ -274,9 +274,6 @@ func compatibilityUse(pass *analysis.Pass, stack []ast.Node) rawUse {
 		fn := pass.TypesInfo.Defs[decl.Name].(*types.Func)
 		switch pass.Pkg.Path() {
 		case modulePath + "x/wasm/keeper":
-			if fn.Name() == "newContractEvent" && fn.Signature().Recv() == nil {
-				return rawLiteral
-			}
 			if isDispatchMsg(fn) {
 				return rawConversion
 			}

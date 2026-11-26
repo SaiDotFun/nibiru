@@ -12,7 +12,7 @@ func newWasmModuleEvent(attrs []sdk.Attribute) sdk.Event {
 }
 
 func newContractEvent(eventType string, attrs []abci.EventAttribute) sdk.Event {
-	return sdk.Event{Type: eventType, Attributes: attrs}
+	return sdk.Event{Type: eventType, Attributes: attrs} // want "construct Nibiru-owned events with sdk.NewEvent"
 }
 
 type SDKMessageHandler struct{}
