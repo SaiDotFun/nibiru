@@ -257,9 +257,9 @@ func TestBlockIndexerMulti(t *testing.T) {
 			q:       query.MustParse("block.height = 1"),
 			results: []int64{1},
 		},
-		"query return all events from a height - exact (deduplicate height)": {
+		"different height equalities return no blocks": {
 			q:       query.MustParse("block.height = 1 AND block.height = 2"),
-			results: []int64{1},
+			results: []int64{},
 		},
 		"query return all events from a height - range": {
 			q:       query.MustParse("block.height < 2 AND block.height > 0 AND block.height > 0"),
@@ -305,9 +305,9 @@ func TestBlockIndexerMulti(t *testing.T) {
 			q:       query.MustParse("end_event.bar > 100 AND end_event.bar <= 500"),
 			results: []int64{1, 2},
 		},
-		"query with height range and height equality - should ignore equality": {
+		"contradictory height equality and range return no blocks": {
 			q:       query.MustParse("block.height = 2 AND end_event.foo >= 100 AND block.height < 2"),
-			results: []int64{1},
+			results: []int64{},
 		},
 		"query with non-existent field": {
 			q:       query.MustParse("end_event.bar = 100"),
@@ -391,9 +391,9 @@ func TestBigInt(t *testing.T) {
 			q:       query.MustParse("block.height = 1"),
 			results: []int64{1},
 		},
-		"query return all events from a height - exact (deduplicate height)": {
+		"different height equalities return no blocks": {
 			q:       query.MustParse("block.height = 1 AND block.height = 2"),
-			results: []int64{1},
+			results: []int64{},
 		},
 		"query return all events from a height - range": {
 			q:       query.MustParse("block.height < 2 AND block.height > 0 AND block.height > 0"),
@@ -453,4 +453,101 @@ func TestBigInt(t *testing.T) {
 			require.Equal(t, tc.results, results)
 		})
 	}
+}
+
+func TestBlockHeightPredicates(t *testing.T) {
+	indexer := blockidxkv.New(db.NewMemDB())
+	for _, height := range []int64{7, 8, 9223372036854775807} {
+		require.NoError(t, indexer.Index(types.EventDataNewBlockHeader{
+			Header: types.Header{Height: height},
+			ResultBeginBlock: abci.ResponseBeginBlock{
+				Events: []abci.Event{
+					{Type: "tx", Attributes: []abci.EventAttribute{{Key: "height", Value: "1", Index: true}}},
+				},
+			},
+		}))
+	}
+
+	for _, tc := range []struct {
+		query   string
+		heights []int64
+	}{
+		{"block.height = 7 AND block.height = 7", []int64{7}},
+		{"block.height = 8 AND block.height = 7", []int64{}},
+		{"block.height = 7 AND block.height >= 8", []int64{}},
+		{"block.height >= 8 AND block.height = 7", []int64{}},
+		{"block.height > 6 AND block.height = 7", []int64{7}},
+		{"block.height = 7 AND block.height >= 7 AND tx.height >= 1", []int64{7}},
+		{"tx.height >= 1 AND block.height = 7 AND block.height >= 7", []int64{7}},
+		{"block.height = 0 AND tx.height >= 1", []int64{}},
+		{"block.height = 9223372036854775807", []int64{9223372036854775807}},
+		{"block.height > 9223372036854775807", []int64{}},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			actual, err := indexer.Search(context.Background(), query.MustParse(tc.query))
+			require.NoError(t, err)
+			require.Equal(t, tc.heights, actual)
+		})
+	}
+
+	for _, predicate := range []string{
+		"block.height = 7.0",
+		"block.height = '7'",
+		"block.height = 18446744073709551623",
+		"block.height > 9223372036854775808",
+		"block.height < TIME 2025-01-02T00:00:00Z",
+	} {
+		t.Run(predicate, func(t *testing.T) {
+			_, err := indexer.Search(context.Background(), query.MustParse(predicate))
+			require.ErrorContains(t, err, "block.height requires a signed 64-bit integer operand")
+		})
+	}
+}
+
+func TestBlockHistoricalTypedPredicates(t *testing.T) {
+	indexer := blockidxkv.New(db.NewMemDB())
+	require.NoError(t, indexer.Index(types.EventDataNewBlockHeader{
+		Header: types.Header{Height: 7},
+		ResultBeginBlock: abci.ResponseBeginBlock{
+			Events: []abci.Event{{
+				Type: "sample",
+				Attributes: []abci.EventAttribute{
+					{Key: "value", Value: "9007199254740993.1", Index: true},
+					{Key: "stamped", Value: "2025-01-02T01:30:00+01:00", Index: true},
+					{Key: "effective", Value: "2025-01-02", Index: true},
+				},
+			}},
+		},
+		ResultEndBlock: abci.ResponseEndBlock{
+			Events: []abci.Event{
+				{Type: "sample", Attributes: []abci.EventAttribute{{Key: "value", Value: "2", Index: true}}},
+				{Type: "sample", Attributes: []abci.EventAttribute{{Key: "source", Value: "end", Index: true}}},
+			},
+		},
+	}))
+
+	for _, tc := range []struct {
+		query   string
+		heights []int64
+	}{
+		{"sample.value = 9007199254740993.1", []int64{7}},
+		{"sample.value = 9007199254740993.2", []int64{}},
+		{"sample.value > 9007199254740993 AND sample.value < 9007199254740993.2", []int64{7}},
+		{"sample.value < 9007199254740993.2 AND sample.value > 9007199254740993", []int64{7}},
+		{"sample.value > 9007199254740993.2 AND sample.value <= 9007199254740993", []int64{}},
+		{"sample.stamped = TIME 2025-01-02T00:30:00Z", []int64{7}},
+		{"sample.effective = DATE 2025-01-02", []int64{7}},
+		{"sample.effective >= DATE 2025-01-02 AND sample.stamped < TIME 2025-01-02T01:00:00Z", []int64{7}},
+		{"sample.stamped > TIME 2025-01-02T00:00:00Z AND sample.source = 'end'", []int64{}},
+		{"sample.value >= 3.0 AND sample.value < 7.0", []int64{}},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			actual, err := indexer.Search(context.Background(), query.MustParse(tc.query))
+			require.NoError(t, err)
+			require.Equal(t, tc.heights, actual)
+		})
+	}
+
+	_, err := indexer.Search(context.Background(), query.MustParse("sample.value >= 1 AND sample.value < TIME 2025-01-02T00:00:00Z"))
+	require.ErrorContains(t, err, "sample.value cannot combine numeric and temporal comparisons")
 }
