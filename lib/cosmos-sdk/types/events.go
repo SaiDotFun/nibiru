@@ -192,6 +192,43 @@ func NewEvent(ty string, attrs ...Attribute) Event {
 	return e
 }
 
+// EventWithUniqueKeys holds one value per attribute key within an event.
+// Multiple events can share a type and attribute keys.
+type EventWithUniqueKeys struct {
+	event Event
+}
+
+// NewEventWithUniqueKeys keeps the first position and last value of each key.
+func NewEventWithUniqueKeys(ty string, attrs ...Attribute) EventWithUniqueKeys {
+	event := Event{Type: ty}
+	if len(attrs) == 0 {
+		return EventWithUniqueKeys{event: event}
+	}
+	event.Attributes = make([]abci.EventAttribute, 0, len(attrs))
+	positions := make(map[string]int, len(attrs))
+	for _, attr := range attrs {
+		if pos, exists := positions[attr.Key]; exists {
+			event.Attributes[pos] = attr.ToKVPair()
+			continue
+		}
+		positions[attr.Key] = len(event.Attributes)
+		event.Attributes = append(event.Attributes, attr.ToKVPair())
+	}
+	return EventWithUniqueKeys{event: event}
+}
+
+// ToEvent returns a copy in the existing SDK event format.
+func (e EventWithUniqueKeys) ToEvent() Event {
+	event := e.event
+	event.Attributes = slices.Clone(event.Attributes)
+	return event
+}
+
+// EmitEventWithUniqueKeys appends an event to the existing event stream.
+func (em *EventManager) EmitEventWithUniqueKeys(event EventWithUniqueKeys) {
+	em.EmitEvent(event.ToEvent())
+}
+
 // NewAttribute returns a new key/value Attribute object.
 func NewAttribute(k, v string) Attribute {
 	return Attribute{k, v}

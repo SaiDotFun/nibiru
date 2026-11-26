@@ -22,6 +22,34 @@ func TestEventsTestSuite(t *testing.T) {
 	suite.Run(t, new(eventsTestSuite))
 }
 
+func (s *eventsTestSuite) TestEventWithUniqueKeys() {
+	attrs := []sdk.Attribute{
+		sdk.NewAttribute("a", "first"),
+		sdk.NewAttribute("b", "middle"),
+		sdk.NewAttribute("a", ""),
+		sdk.NewAttribute("A", "case-sensitive"),
+	}
+	event := sdk.NewEventWithUniqueKeys("transfer", attrs...)
+	want := sdk.NewEvent("transfer",
+		sdk.NewAttribute("a", ""),
+		sdk.NewAttribute("b", "middle"),
+		sdk.NewAttribute("A", "case-sensitive"),
+	)
+	attrs[2].Value = "mutated input"
+	first := event.ToEvent()
+	s.Require().Equal(want, first)
+	first.Attributes[0].Value = "mutated output"
+	s.Require().Equal(want, event.ToEvent())
+	s.Require().Equal(sdk.NewEvent("empty"), sdk.NewEventWithUniqueKeys("empty").ToEvent())
+
+	em := sdk.NewEventManager()
+	em.EmitEventWithUniqueKeys(event)
+	em.EmitEventWithUniqueKeys(sdk.NewEventWithUniqueKeys("transfer", sdk.NewAttribute("a", "different")))
+	s.Require().Equal(sdk.Events{want, sdk.NewEvent("transfer", sdk.NewAttribute("a", "different"))}, em.Events())
+	em.Events()[0].Attributes[0].Value = "mutated emission"
+	s.Require().Equal(want, event.ToEvent())
+}
+
 func (s *eventsTestSuite) TestAppendEvents() {
 	e1 := sdk.NewEvent("transfer", sdk.NewAttribute("sender", "foo"))
 	e2 := sdk.NewEvent("transfer", sdk.NewAttribute("sender", "bar"))
