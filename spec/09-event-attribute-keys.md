@@ -12,9 +12,8 @@ Wasm submessage replies. Separate events can share the same type and keys.
 
 `sdk.NewEvent` keeps a key in its first position and uses its last value.
 `EmitEvent` appends the event as supplied. The ABCI output step applies the
-same key rule to raw forwarded events as it sets the index flags. The Go
-analyzer flags duplicate constant keys and direct bypasses in its scoped
-packages. The constructor handles keys computed at runtime.
+same key rule to raw forwarded events as it sets the index flags. The
+constructor applies the rule to literal keys and keys computed at runtime.
 
 | Source | Event Construction | Behavior |
 | --- | --- | --- |
