@@ -154,17 +154,14 @@ cargo test -p x-consensus
 just rs wasm-check
 ```
 
-### Updating the embedded build
+### Released Bootstrap Artifact
 
-1. Build the release:
-   `just rs optimizer build --manifest-path Cargo.toml -p x-consensus --output-dir wasm-contracts/artifacts --mode release`
-2. Gzip it:
-   `gzip -9 -n -c wasm-contracts/artifacts/x_consensus.wasm > x/consensus/x_consensus.wasm.gz`
-   (`-n` drops the name and timestamp, so recompressing gives the same file).
-3. Commit `x/consensus/x_consensus.wasm.gz`.
-4. Set `ContractWasmSHA256` in `x/consensus/wasm.go` to the SHA-256 of the
-   uncompressed `wasm-contracts/artifacts/x_consensus.wasm`
-   (`sha256sum wasm-contracts/artifacts/x_consensus.wasm`). That hash is the
-   on-chain code checksum, and `TestEmbeddedWasm` fails until the two match.
-   A new build also changes the published contract address, so update
-   `TestContractAddressPinned` in `x/consensus/keeper`.
+`x/consensus/x_consensus.wasm.gz` contains the v2.23.0 bootstrap Wasm. Its
+checksum determines the `Instantiate2` address when replaying the upgrade.
+The command `just rs wasm-embed-check` verifies the uncompressed Wasm and the
+Go constant against the pinned release checksum.
+
+To build the current source, run `just rs optimizer build --manifest-path
+Cargo.toml -p x-consensus --output-dir wasm-contracts/artifacts --mode release`.
+Ship updated Wasm through an explicit versioned upgrade that preserves the
+original bootstrap artifact.

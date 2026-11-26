@@ -24,12 +24,7 @@ request replaces it.
 ```sh
 cargo test -p x-upgrade
 just rs optimizer build --manifest-path Cargo.toml -p x-upgrade --output-dir wasm-contracts/artifacts --mode release
-gzip -9 -n -c wasm-contracts/artifacts/x_upgrade.wasm > x/upgrade/x_upgrade.wasm.gz
 ```
-
-Update `ContractWasmSHA256` in `x/upgrade/wasm.go` with the uncompressed artifact
-hash. The embedded-code test verifies that hash. Keep the deterministic gzip in
-the commit so node operators do not need a Rust toolchain.
 
 ## Addresses and Release Provenance
 
@@ -46,15 +41,12 @@ address. The keeper uses its stored address and the Wasm creator index to find
 that deployment; it does not replace it with a prediction for a later build.
 Genesis import likewise preserves the exported contract and address.
 
-Before publishing the finalized v2.22 enabling release, preserve its original
-artifact, checksum, creator, salt, and predicted address as release provenance.
-Tests of that released deployment must use those frozen inputs. Tests of fresh
-genesis must use the embedded build under test, so updating a localnet build
-does not rewrite an assertion about mainnet's original address. If a later
-binary needs both the historical bootstrap and a newer fresh-genesis artifact,
-keep them versioned separately and make the historical handler select its
-original artifact explicitly. Do not silently replace a released bootstrap
-artifact or change its salt to accommodate a later contract version.
+`x/upgrade/x_upgrade.wasm.gz` contains the v2.23.0 bootstrap Wasm. The command
+`just rs wasm-embed-check` verifies the uncompressed Wasm and the Go constant
+against the pinned release checksum. Ship updated Wasm through an explicit
+versioned upgrade that preserves the original bootstrap artifact. If a later
+binary needs a different fresh-genesis build, keep it separately versioned and
+retain the original artifact for the historical handler.
 
 The `history` query uses an exclusive `(height, name)` cursor, limit 1 to 200,
 and optional descending order. Name lookup returns the earliest matching
