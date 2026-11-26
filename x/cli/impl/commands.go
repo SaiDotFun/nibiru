@@ -31,7 +31,7 @@ func QueryCmd() *cobra.Command {
 		rpc.BlockCommand(),
 		legacyTxsCmd,
 		QueryTxCmd(),
-		querySearchCmd(),
+		querySearchCmd("query"),
 	)
 
 	app.ModuleBasics.AddQueryCommands(rootQueryCmd)
@@ -60,7 +60,7 @@ func TxCmd() *cobra.Command {
 		authcmd.GetBroadcastCommand(),
 		authcmd.GetEncodeCommand(),
 		authcmd.GetDecodeCommand(),
-		querySearchCmd(),
+		querySearchCmd("tx"),
 	)
 
 	app.ModuleBasics.AddTxCommands(cmd)

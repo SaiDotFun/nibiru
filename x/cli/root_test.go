@@ -54,7 +54,8 @@ func TestSearchHelpWithRootConfig(t *testing.T) {
 			rootCmd.SetArgs([]string{parent, "search", "--home", t.TempDir()})
 			require.NoError(t, svrcmd.Execute(rootCmd, "", app.DefaultNodeHome))
 			require.Contains(t, output.String(), "Search indexed chain data")
-			require.Contains(t, output.String(), "--gql")
+			require.Contains(t, output.String(), "nibiru "+parent+" search --gql")
+			require.Contains(t, output.String(), "nibiru "+parent+" search --schema")
 		})
 	}
 }

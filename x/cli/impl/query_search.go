@@ -32,28 +32,28 @@ var searchSchema = gqlparser.MustLoadSchema(&ast.Source{Name: "query_search.grap
 
 const maxSearchDocumentSize = 1 << 20
 
-func querySearchCmd() *cobra.Command {
+func querySearchCmd(parent string) *cobra.Command {
 	var gql, file, variables, operation string
 	var showSchema bool
 	cmd := &cobra.Command{
 		Use:   "search",
 		Short: "Find transactions and events with GraphQL",
 		Long: `Search indexed chain data with GraphQL.
-The transactions field returns matching transaction results.
+The GraphQL field transactions returns one result per matching transaction.
 The events field returns individual events, including begin-block and end-block events.
 A document can request both fields. Use --file - to read from stdin.
 Use --schema to see filters and result fields without contacting a node.
 Use --node to select a node that supports structured search.
 The events field requires the node's event index.`,
-		Example: `  # At an example block height, get each transaction's hash and result code.
-  nibiru query search --gql '{
+		Example: fmt.Sprintf(`  # Get transaction hashes and result codes at block height 132.
+  nibiru %[1]s search --gql '{
     transactions(where: {height: {gte: 132, lte: 132}}) {
       nodes { hash code }
     }
   }'
 
   # Get transaction and end-block events and check indexed height coverage.
-  nibiru query search --gql '{
+  nibiru %[1]s search --gql '{
     events(where: {height: {gte: 132, lte: 132}, phases: [TX, END_BLOCK]}) {
       nodes { type phase txHash attributes { key value } }
       nextCursor
@@ -61,8 +61,8 @@ The events field requires the node's event index.`,
     }
   }'
 
-  nibiru query search --file search.graphql
-  nibiru query search --schema`,
+  nibiru %[1]s search --file search.graphql
+  nibiru %[1]s search --schema`, parent),
 		Args: func(cmd *cobra.Command, args []string) error {
 			if err := cobra.NoArgs(cmd, args); err != nil {
 				return err
