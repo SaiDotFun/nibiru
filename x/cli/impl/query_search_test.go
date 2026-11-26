@@ -110,6 +110,36 @@ func TestQuerySearchInvalidDocument(t *testing.T) {
 	}
 }
 
+func TestQuerySearchDefaultHelp(t *testing.T) {
+	cmd := QueryCmd()
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"search"})
+	require.NoError(t, cmd.ExecuteContext(t.Context()))
+	for _, example := range []string{"transactions(where:", "events(where:", "--gql", "--file", "--schema"} {
+		require.Contains(t, out.String(), example)
+	}
+
+	out.Reset()
+	cmd = QueryCmd()
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"--help"})
+	require.NoError(t, cmd.ExecuteContext(t.Context()))
+	require.NotRegexp(t, `(?m)^  txs\s`, out.String())
+}
+
+func TestQuerySearchRejectsIntrospectionBeforeDispatch(t *testing.T) {
+	for _, field := range []string{`__schema { queryType { name } }`, `__type(name: "Query") { name }`} {
+		document := "{ transactions(where: {height: {gte: 132, lte: 132}}) { totalCount } " + field + " }"
+		_, err := callSearchCommand(t, document, "{}", "http://127.0.0.1:1")
+		require.ErrorContains(t, err, "Use --schema to inspect the schema")
+	}
+
+	out, err := callSearchCommand(t, "{ __typename }", "{}", "http://127.0.0.1:1")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"data":{"__typename":"Query"}}`, out)
+}
+
 func TestQuerySearchSchema(t *testing.T) {
 	cmd := QueryCmd()
 	out := new(bytes.Buffer)
@@ -178,7 +208,8 @@ func TestQuerySearchInputFlags(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"missing", nil, "at least one of the flags"},
+		{"disabled schema", []string{"--schema=false"}, "provide a GraphQL document"},
+		{"node without document", []string{"--node", "http://127.0.0.1:1"}, "provide a GraphQL document"},
 		{"two documents", []string{"--file", "-", "--gql", "{}"}, "none of the others can be"},
 		{"schema and document", []string{"--schema", "--gql", "{}"}, "none of the others can be"},
 		{"empty document", []string{"--gql", ""}, "provide a GraphQL document"},

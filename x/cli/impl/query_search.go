@@ -37,8 +37,27 @@ func querySearchCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
 		Short: "Find transactions and events with GraphQL",
-		Long:  "Find transactions and events with GraphQL. Use --schema to list the supported filters and result fields.",
-		Example: `  nibiru query search --gql '{ transactions(where: {height: {gte: 132, lte: 132}}) { nodes { hash code } } }'
+		Long: `Search indexed chain data with GraphQL.
+The transactions field returns matching transaction results.
+The events field returns individual events, including begin-block and end-block events.
+A document can request both fields. Use --file - to read from stdin.
+Use --schema to see filters and result fields without contacting a node.`,
+		Example: `  # At an example block height, get each transaction's hash and result code.
+  nibiru query search --gql '{
+    transactions(where: {height: {gte: 132, lte: 132}}) {
+      nodes { hash code }
+    }
+  }'
+
+  # Get transaction and end-block events and check indexed height coverage.
+  nibiru query search --gql '{
+    events(where: {height: {gte: 132, lte: 132}, phases: [TX, END_BLOCK]}) {
+      nodes { type phase txHash attributes { key value } }
+      nextCursor
+      coverage { minHeight maxHeight }
+    }
+  }'
+
   nibiru query search --file search.graphql
   nibiru query search --schema`,
 		Args: cobra.NoArgs,
@@ -46,6 +65,9 @@ func querySearchCmd() *cobra.Command {
 			if showSchema {
 				_, err := io.WriteString(cmd.OutOrStdout(), searchSchemaSource)
 				return err
+			}
+			if cmd.Flags().NFlag() == 0 {
+				return cmd.Help()
 			}
 			document := gql
 			if cmd.Flags().Changed("file") {
@@ -82,7 +104,6 @@ func querySearchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&variables, "variables", "{}", "GraphQL variables as a JSON object")
 	cmd.Flags().StringVar(&operation, "operation", "", "Operation name for a document with several operations")
 	cmd.Flags().BoolVar(&showSchema, "schema", false, "Print the GraphQL schema")
-	cmd.MarkFlagsOneRequired("gql", "file", "schema")
 	cmd.MarkFlagsMutuallyExclusive("gql", "file", "schema")
 	return cmd
 }
@@ -128,6 +149,13 @@ func executeSearchDocument(ctx context.Context, rpc rpcclient.Caller, document, 
 	}
 
 	fields := searchFields(op.SelectionSet, "Query", bound)
+	for _, field := range fields {
+		switch field.Name {
+		case "transactions", "events", "__typename":
+		default:
+			return nil, fmt.Errorf("unsupported GraphQL field %q. Use --schema to inspect the schema", field.Name)
+		}
+	}
 	data := make(map[string]any, len(fields))
 	for _, field := range fields {
 		if field.Name == "__typename" {
