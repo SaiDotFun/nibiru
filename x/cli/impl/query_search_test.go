@@ -116,7 +116,7 @@ func TestQuerySearchDefaultHelp(t *testing.T) {
 	cmd.SetOut(out)
 	cmd.SetArgs([]string{"search"})
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
-	for _, example := range []string{"transactions(where:", "events(where:", "--gql", "--file", "--schema"} {
+	for _, example := range []string{"transactions(where:", "events(where:", "--gql", "--file", "--schema", "supports structured search"} {
 		require.Contains(t, out.String(), example)
 	}
 

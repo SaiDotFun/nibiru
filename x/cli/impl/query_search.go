@@ -41,7 +41,9 @@ func querySearchCmd() *cobra.Command {
 The transactions field returns matching transaction results.
 The events field returns individual events, including begin-block and end-block events.
 A document can request both fields. Use --file - to read from stdin.
-Use --schema to see filters and result fields without contacting a node.`,
+Use --schema to see filters and result fields without contacting a node.
+Use --node to select a node that supports structured search.
+The events field requires the node's event index.`,
 		Example: `  # At an example block height, get each transaction's hash and result code.
   nibiru query search --gql '{
     transactions(where: {height: {gte: 132, lte: 132}}) {
