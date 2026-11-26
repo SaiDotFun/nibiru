@@ -1,7 +1,11 @@
 scalar Long
+"""Attribute names and their first stored string values."""
+scalar EventAttributes
+"""An object keyed by the event type, with its attributes as the value."""
+scalar EventPayload
 
 type Query {
-  transactions(where: TransactionFilter!, first: Int = 20, page: Int = 1, order: SortOrder = ASC): TransactionPage!
+  txs(where: TransactionFilter!, first: Int = 20, page: Int = 1, order: SortOrder = ASC): TransactionPage!
   events(where: EventFilter!, first: Int = 20, after: String): EventPage!
 }
 
@@ -69,8 +73,8 @@ type Transaction {
 
 type Event {
   type: String!
-  """Attributes in event order, each as [key, value]. Keys may repeat."""
-  attributes: [[String!]!]!
+  attributes: EventAttributes!
+  event: EventPayload!
 }
 
 type IndexedEvent {
@@ -80,8 +84,8 @@ type IndexedEvent {
   txHash: String
   eventIndex: Int!
   type: String!
-  """Attributes in event order, each as [key, value]. Keys may repeat."""
-  attributes: [[String!]!]!
+  attributes: EventAttributes!
+  event: EventPayload!
 }
 
 type IndexedHeightRange {

@@ -22,7 +22,7 @@ import (
 
 func TestQuerySearchTransactions(t *testing.T) {
 	document := `query Find($from: Long!, $address: String!, $wantEvents: Boolean = true, $count: Int = 10) {
-  results: transactions(where: {
+  results: txs(where: {
     height: { gte: $from, lte: 102 }
     events: [
       { type: "message", attributes: { key: "action", eq: "/bank.Send" } }
@@ -32,7 +32,7 @@ func TestQuerySearchTransactions(t *testing.T) {
     totalCount
     nodes {
       ...TxFields
-      events @include(if: $wantEvents) { type attributes }
+      events @include(if: $wantEvents) { type attributes event }
     }
   }
 }
@@ -49,16 +49,23 @@ fragment TxFields on Transaction { where: height code }
   "order_by":"desc","page":"1","per_page":"5"
 }`, `{
   "txs":[{"hash":"AB","height":"101","index":0,"tx_result":{
-    "code":0,"events":[{"type":"transfer","attributes":[{"key":"amount","value":"42unibi","index":true}]}]
+    "code":0,"events":[
+      {"type":"transfer","attributes":[{"key":"amount","value":"42unibi","index":true},{"key":"amount","value":"43unibi","index":true}]},
+      {"type":"transfer","attributes":[]}
+    ]
   }}],
   "total_count":"1"
 }`)
 	got, err := callSearchCommand(t, document, `{"from":100,"address":"nibi1é","count":5}`, server.URL)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
-  "results":{"totalCount":1,"nodes":[
-    {"where":101,"code":0,"events":[{"type":"transfer","attributes":[["amount","42unibi"]]}]}
-  ]}
+  "resultsTotalCount":1,
+  "results":[
+    {"where":101,"code":0,"events":[
+      {"type":"transfer","attributes":{"amount":"42unibi"},"event":{"transfer":{"amount":"42unibi"}}},
+      {"type":"transfer","attributes":{},"event":{"transfer":{}}}
+    ]}
+  ]
 }`, got)
 }
 
@@ -66,16 +73,16 @@ func TestQuerySearchEvents(t *testing.T) {
 	const document = `query {
   events(where: {
     height: { gte: 100, lte: 103 }, phases: [BEGIN_BLOCK, END_BLOCK], type: "wasm",
-    attributes: { key: "position", eq: "" }
+    attributes: { key: "position", eq: "later" }
   }, after: "cursor", first: 2) {
-    nodes { height phase txIndex txHash eventIndex type attributes }
+    nodes { height phase txIndex txHash eventIndex type attributes event }
     nextCursor
     coverage { minHeight maxHeight }
   }
 }`
 	server := searchResponse(t, "event_search", `{
   "filter":{"min_height":"100","max_height":"103","phases":["begin_block","end_block"],"type":"wasm",
-  "attributes":[{"key":"position","eq":""}]},
+  "attributes":[{"key":"position","eq":"later"}]},
   "cursor":"cursor","limit":"2"
 }`, `{
   "events":[{
@@ -87,22 +94,51 @@ func TestQuerySearchEvents(t *testing.T) {
 	got, err := callSearchCommand(t, document, "{}", server.URL)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
-  "events":{
-    "nodes":[{"height":101,"phase":"END_BLOCK","txIndex":null,"txHash":null,"eventIndex":0,"type":"wasm",
-      "attributes":[["position",""],["position","later"]]}],
-    "nextCursor":null,"coverage":[{"minHeight":101,"maxHeight":103}]
-  }
+  "events":[{"height":101,"phase":"END_BLOCK","txIndex":null,"txHash":null,"eventIndex":0,"type":"wasm",
+    "attributes":{"position":""},"event":{"wasm":{"position":""}}}],
+  "eventsNextCursor":null,"eventsRange":[{"minHeight":101,"maxHeight":103}]
 }`, got)
+}
+
+func TestQuerySearchFlattensAliasesAndMetadata(t *testing.T) {
+	server := searchResponse(t, "event_search",
+		`{"filter":{"attributes":[]},"limit":"20"}`,
+		`{"events":[],"next_cursor":"after-first","coverage":[{"min_height":"101","max_height":"103"}]}`)
+	document := `query {
+  recent: events(where: {}) {
+    ...Page
+    ... on EventPage { covered: coverage { minHeight } }
+    nextCursor @skip(if: true)
+  }
+}
+fragment Page on EventPage {
+  nodes { type }
+  sample: nodes { height }
+  next: nextCursor
+}`
+	got, err := callSearchCommand(t, document, "{}", server.URL)
+	require.NoError(t, err)
+	require.Equal(t, `{"recent":[],"recentCovered":[{"minHeight":101}],"recentNext":"after-first","recentSample":[]}`+"\n", got)
+}
+
+func TestQuerySearchRejectsOutputCollisionBeforeRPC(t *testing.T) {
+	document := `{
+  events(where: {}) { nextCursor }
+  eventsNextCursor: txs(where: {}) { nodes { hash } }
+}`
+	out, err := callSearchCommand(t, document, "{}", "http://127.0.0.1:1")
+	require.ErrorContains(t, err, `duplicate search output key "eventsNextCursor"`)
+	require.Empty(t, out)
 }
 
 func TestQuerySearchInvalidDocument(t *testing.T) {
 	for _, tc := range []struct {
 		name, document, vars, errorText string
 	}{
-		{"schema", `{ transactions(where: {}) { nodes { badField } } }`, "{}", "Cannot query field"},
-		{"variables", `query($height: Long!) { transactions(where: {height: {gte: $height}}) { totalCount } }`, "{}", "must be defined"},
-		{"custom scalar overflow", `{ transactions(where: {height: {gte: 9223372036854775808}}) { totalCount } }`, "{}", "Expected value of type"},
-		{"operation selection", `query A { transactions(where: {}) { totalCount } } query B { transactions(where: {}) { totalCount } }`, "{}", "specify --operation"},
+		{"schema", `{ txs(where: {}) { nodes { badField } } }`, "{}", "Cannot query field"},
+		{"variables", `query($height: Long!) { txs(where: {height: {gte: $height}}) { totalCount } }`, "{}", "must be defined"},
+		{"custom scalar overflow", `{ txs(where: {height: {gte: 9223372036854775808}}) { totalCount } }`, "{}", "Expected value of type"},
+		{"operation selection", `query A { txs(where: {}) { totalCount } } query B { txs(where: {}) { totalCount } }`, "{}", "specify --operation"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := callSearchCommand(t, tc.document, tc.vars, "http://127.0.0.1:1")
@@ -117,7 +153,7 @@ func TestQuerySearchDefaultHelp(t *testing.T) {
 	cmd.SetOut(out)
 	cmd.SetArgs([]string{"search"})
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
-	for _, example := range []string{"transactions(where:", "events(where:", "--gql", "--file", "--schema", "supports structured search"} {
+	for _, example := range []string{"txs(where:", "events(where:", "--gql", "--file", "--schema", "supports structured search"} {
 		require.Contains(t, out.String(), example)
 	}
 
@@ -131,7 +167,7 @@ func TestQuerySearchDefaultHelp(t *testing.T) {
 
 func TestQuerySearchRejectsIntrospectionBeforeDispatch(t *testing.T) {
 	for _, field := range []string{`__schema { queryType { name } }`, `__type(name: "Query") { name }`} {
-		document := "{ transactions(where: {height: {gte: 132, lte: 132}}) { totalCount } " + field + " }"
+		document := "{ txs(where: {height: {gte: 132, lte: 132}}) { totalCount } " + field + " }"
 		_, err := callSearchCommand(t, document, "{}", "http://127.0.0.1:1")
 		require.ErrorContains(t, err, "Use --schema to inspect the schema")
 	}
@@ -166,7 +202,7 @@ func callSearchCommand(t *testing.T, document, variables, node string) (string, 
 
 func TestQuerySearchBothFieldsWithEveryInput(t *testing.T) {
 	const document = `{
-		transactions(where: {height: {gte: 132, lte: 132}}) { totalCount }
+		txs(where: {height: {gte: 132, lte: 132}}) { totalCount }
 		events(where: {height: {gte: 132, lte: 132}}) { nodes { phase } }
 	}`
 	server, calls := searchResponses(t, map[string]searchFixture{
@@ -198,7 +234,7 @@ func TestQuerySearchBothFieldsWithEveryInput(t *testing.T) {
 				cmd.SetIn(strings.NewReader(document))
 				cmd.SetArgs(append([]string{"search", "--node", server.URL}, tc.args...))
 				require.NoError(t, cmd.ExecuteContext(t.Context()))
-				require.JSONEq(t, `{"transactions":{"totalCount":1},"events":{"nodes":[{"phase":"END_BLOCK"}]}}`, out.String())
+				require.JSONEq(t, `{"txsTotalCount":1,"events":[{"phase":"END_BLOCK"}]}`, out.String())
 			})
 		}
 	}

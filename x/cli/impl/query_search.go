@@ -39,15 +39,20 @@ func querySearchCmd(parent string) *cobra.Command {
 		Use:   "search",
 		Short: "Find transactions and events with GraphQL",
 		Long: `Search indexed chain data with GraphQL.
-The GraphQL field transactions returns one result per matching transaction.
+The GraphQL field txs returns one result per matching transaction.
 The events field returns individual events, including begin-block and end-block events.
 A document can request both fields. Use --file - to read from stdin.
 Use --schema to see filters and result fields without contacting a node.
 Use --node to select a node that supports structured search.
-The events field requires the node's event index.`,
+The events field requires the node's event index.
+The CLI prints compact JSON. The nodes selection becomes a top-level array.
+Selected page metadata appears beside it, such as eventsNextCursor, eventsRange,
+and txsTotalCount. Aliases change the corresponding output names.
+Event attributes show the first stored value for each key. Historical filters
+can match any stored value, including a later occurrence.`,
 		Example: fmt.Sprintf(`  # Get transaction hashes and result codes at block height 132.
   nibiru %[1]s search --gql '{
-    transactions(where: {height: {gte: 132, lte: 132}}) {
+    txs(where: {height: {gte: 132, lte: 132}}) {
       nodes { hash code }
     }
   }'
@@ -55,7 +60,7 @@ The events field requires the node's event index.`,
   # Get transaction and end-block events and check indexed height coverage.
   nibiru %[1]s search --gql '{
     events(where: {height: {gte: 132, lte: 132}, phases: [TX, END_BLOCK]}) {
-      nodes { type phase txHash attributes }
+      nodes { phase txHash event }
       nextCursor
       coverage { minHeight maxHeight }
     }
@@ -109,7 +114,7 @@ The events field requires the node's event index.`,
 			if err != nil {
 				return err
 			}
-			return printJSON(cmd, data)
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(data)
 		},
 	}
 	cmd.Flags().String(flags.FlagNode, "tcp://localhost:26657", "BFT RPC endpoint")
@@ -163,15 +168,13 @@ func executeSearchDocument(ctx context.Context, rpc rpcclient.Caller, document, 
 	}
 
 	fields := searchFields(op.SelectionSet, "Query", bound)
-	for _, field := range fields {
-		switch field.Name {
-		case "transactions", "events", "__typename":
-		default:
-			return nil, fmt.Errorf("unsupported GraphQL field %q. Use --schema to inspect the schema", field.Name)
-		}
+	outputFields, err := planSearchOutput(fields, bound)
+	if err != nil {
+		return nil, err
 	}
-	data := make(map[string]any, len(fields))
-	for _, field := range fields {
+
+	data := make(map[string]any)
+	for i, field := range fields {
 		if field.Name == "__typename" {
 			data[field.Alias] = "Query"
 			continue
@@ -180,9 +183,59 @@ func executeSearchDocument(ctx context.Context, rpc rpcclient.Caller, document, 
 		if err != nil {
 			return nil, err
 		}
-		data[field.Alias] = result
+		for _, output := range outputFields[i] {
+			child := output.selection
+			if child.Name == "__typename" {
+				data[output.key] = field.Definition.Type.Name()
+				continue
+			}
+			data[output.key] = projectSearchResult(result[child.Name], child.SelectionSet, child.Definition.Type.Name(), bound)
+		}
 	}
 	return data, nil
+}
+
+type searchOutputField struct {
+	key       string
+	selection *ast.Field
+}
+
+// planSearchOutput catches collisions between flattened fields before any RPC call.
+func planSearchOutput(fields []*ast.Field, vars map[string]any) ([][]searchOutputField, error) {
+	pages := make([][]searchOutputField, len(fields))
+	keys := make(map[string]struct{})
+	for i, field := range fields {
+		switch field.Name {
+		case "txs", "events":
+			for _, child := range searchFields(field.SelectionSet, field.Definition.Type.Name(), vars) {
+				key := searchPageKey(field.Alias, child)
+				pages[i] = append(pages[i], searchOutputField{key: key, selection: child})
+			}
+		case "__typename":
+			pages[i] = []searchOutputField{{key: field.Alias}}
+		default:
+			return nil, fmt.Errorf("unsupported GraphQL field %q. Use --schema to inspect the schema", field.Name)
+		}
+		for _, output := range pages[i] {
+			if _, exists := keys[output.key]; exists {
+				return nil, fmt.Errorf("duplicate search output key %q. Change a GraphQL alias", output.key)
+			}
+			keys[output.key] = struct{}{}
+		}
+	}
+	return pages, nil
+}
+
+func searchPageKey(prefix string, field *ast.Field) string {
+	if field.Name == field.Alias {
+		switch field.Name {
+		case "nodes":
+			return prefix
+		case "coverage":
+			return prefix + "Range"
+		}
+	}
+	return prefix + strings.ToUpper(field.Alias[:1]) + field.Alias[1:]
 }
 
 // searchFields expands enabled fragments and merges field selections by their
@@ -337,7 +390,7 @@ func searchFieldArguments(field *ast.Field, vars map[string]any) (map[string]any
 	return args, nil
 }
 
-func executeSearchField(ctx context.Context, rpc rpcclient.Caller, field *ast.Field, vars map[string]any) (any, error) {
+func executeSearchField(ctx context.Context, rpc rpcclient.Caller, field *ast.Field, vars map[string]any) (map[string]any, error) {
 	args, err := searchFieldArguments(field, vars)
 	if err != nil {
 		return nil, err
@@ -346,17 +399,14 @@ func executeSearchField(ctx context.Context, rpc rpcclient.Caller, field *ast.Fi
 	if err != nil {
 		return nil, err
 	}
-	var result map[string]any
 	switch field.Name {
-	case "transactions":
-		result, err = querySearchTransactions(ctx, rpc, where, args)
+	case "txs":
+		return querySearchTransactions(ctx, rpc, where, args)
 	case "events":
-		result, err = querySearchEvents(ctx, rpc, where, args)
+		return querySearchEvents(ctx, rpc, where, args)
+	default:
+		return nil, fmt.Errorf("unsupported search field %q", field.Name)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return projectSearchResult(result, field.SelectionSet, field.Definition.Type.Name(), vars), nil
 }
 
 func querySearchTransactions(ctx context.Context, rpc rpcclient.Caller, where []byte, args map[string]any) (map[string]any, error) {
@@ -394,7 +444,11 @@ func querySearchTransactions(ctx context.Context, rpc rpcclient.Caller, where []
 		}
 		events := make([]map[string]any, 0, len(tx.TxResult.Events))
 		for _, event := range tx.TxResult.Events {
-			events = append(events, map[string]any{"type": event.Type, "attributes": searchAttributePairs(event.Attributes)})
+			attributes := searchEventAttributes(event.Attributes)
+			events = append(events, map[string]any{
+				"type": event.Type, "attributes": attributes,
+				"event": map[string]map[string]string{event.Type: attributes},
+			})
 		}
 		nodes = append(nodes, map[string]any{
 			"hash": tx.Hash.String(), "height": tx.Height, "index": tx.Index, "code": tx.TxResult.Code,
@@ -438,10 +492,11 @@ func querySearchEvents(ctx context.Context, rpc rpcclient.Caller, where []byte, 
 		if event.TxHash != "" {
 			hash = event.TxHash
 		}
+		attributes := searchEventAttributes(event.Attributes)
 		nodes = append(nodes, map[string]any{
 			"height": event.Height, "phase": strings.ToUpper(event.Phase), "txIndex": event.TxIndex,
 			"txHash": hash, "eventIndex": event.EventIndex, "type": event.Type,
-			"attributes": searchAttributePairs(event.Attributes),
+			"attributes": attributes, "event": map[string]map[string]string{event.Type: attributes},
 		})
 	}
 	coverage := make([]map[string]any, 0, len(result.Coverage))
@@ -469,10 +524,12 @@ func copySearchIntParam(params, args map[string]any, argument, parameter string)
 	return nil
 }
 
-func searchAttributePairs(attrs []abci.EventAttribute) [][2]string {
-	out := make([][2]string, 0, len(attrs))
+func searchEventAttributes(attrs []abci.EventAttribute) map[string]string {
+	result := make(map[string]string, len(attrs))
 	for _, attr := range attrs {
-		out = append(out, [2]string{attr.Key, attr.Value})
+		if _, exists := result[attr.Key]; !exists {
+			result[attr.Key] = attr.Value
+		}
 	}
-	return out
+	return result
 }
