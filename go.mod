@@ -106,7 +106,6 @@ require (
 	golang.org/x/net v0.59.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/text v0.43.0
-	golang.org/x/tools v0.51.0
 	gonum.org/v1/gonum v0.17.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260715232425-e75dac1f907d
 	google.golang.org/grpc v1.84.0
