@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_json_binary, Attribute, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut,
-    Env, MessageInfo, Response, StdError, StdResult, Storage, Timestamp,
+    Env, Event, MessageInfo, Response, StdError, StdResult, Storage, Timestamp,
     Uint128,
 };
 use std::cmp::min;
@@ -147,7 +147,7 @@ fn reward_users(
     }
     vesting_schedule.validate()?;
 
-    let mut attrs: Vec<Attribute> = vec![];
+    let mut events = vec![];
     for req in rewards {
         // validate amounts and cliff details if there's one
         req.validate()?;
@@ -161,8 +161,8 @@ fn reward_users(
         );
 
         match result {
-            Ok(response) => {
-                attrs.extend(response.attributes);
+            Ok(event) => {
+                events.push(event);
                 res.push(RewardUserResponse {
                     user_address: req.user_address,
                     success: true,
@@ -186,7 +186,7 @@ fn reward_users(
         .save(deps.storage, &(unallocated_amount - total_requested))?;
 
     Ok(Response::new()
-        .add_attributes(attrs)
+        .add_events(events)
         .add_attribute("method", "reward_users")
         .set_data(to_json_binary(&res).unwrap()))
 }
@@ -197,7 +197,7 @@ fn register_vesting_account(
     vesting_amount: Uint128,
     cliff_amount: Uint128,
     vesting_schedule: &VestingSchedule,
-) -> Result<Response, ContractError> {
+) -> Result<Event, ContractError> {
     // vesting_account existence check
     if VESTING_ACCOUNTS.has(storage, address) {
         return Err(StdError::generic_err(format!(
@@ -220,7 +220,7 @@ fn register_vesting_account(
         },
     )?;
 
-    Ok(Response::new().add_attributes(vec![
+    Ok(Event::new("register_vesting_account").add_attributes([
         ("action", "register_vesting_account"),
         ("address", address),
         ("vesting_amount", &vesting_amount.to_string()),
@@ -243,7 +243,7 @@ fn deregister_vesting_accounts(
     }
 
     let mut res = vec![];
-    let mut attrs: Vec<Attribute> = vec![];
+    let mut events = vec![];
     let mut messages: Vec<CosmosMsg> = vec![];
 
     for address in addresses {
@@ -256,8 +256,8 @@ fn deregister_vesting_accounts(
         );
 
         match result {
-            Ok(response) => {
-                attrs.extend(response.attributes);
+            Ok(event) => {
+                events.push(event);
                 res.push(DeregisterUserResponse {
                     user_address: address,
                     success: true,
@@ -279,7 +279,7 @@ fn deregister_vesting_accounts(
 
     Ok(Response::new()
         .add_messages(messages)
-        .add_attributes(attrs)
+        .add_events(events)
         .add_attribute("action", "deregister_vesting_accounts")
         .set_data(to_json_binary(&res).unwrap()))
 }
@@ -290,7 +290,7 @@ fn deregister_vesting_account(
     address: &str,
     admin_address: &str,
     messages: &mut Vec<CosmosMsg>,
-) -> Result<Response, ContractError> {
+) -> Result<Event, ContractError> {
     // vesting_account existence check
     let account = VESTING_ACCOUNTS.may_load(storage, address)?;
     let denom = DENOM.load(storage)?;
@@ -321,7 +321,7 @@ fn deregister_vesting_account(
         admin_address,
     )?;
 
-    Ok(Response::new().add_attributes(vec![
+    Ok(Event::new("deregister_vesting_account").add_attributes([
         ("action", "deregister_vesting_account"),
         ("address", address),
         ("vesting_amount", &account.vesting_amount.to_string()),
