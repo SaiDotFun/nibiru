@@ -125,6 +125,8 @@ func TestNodeStartsWithoutEventSearch(t *testing.T) {
 		t.Run(fmt.Sprintf("discard_responses=%t", discard), func(t *testing.T) {
 			config := cfg.ResetTestRoot("node_without_event_search")
 			t.Cleanup(func() { require.NoError(t, os.RemoveAll(config.RootDir)) })
+			// The address book writes on shutdown and can race with test root cleanup.
+			config.P2P.PexReactor = false
 			config.Storage.DiscardABCIResponses = discard
 			n, err := newTestNode(config, log.TestingLogger())
 			require.NoError(t, err)
