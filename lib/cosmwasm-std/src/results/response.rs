@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Binary;
 
-use super::{Attribute, CosmosMsg, Empty, Event, SubMsg};
+use super::{set_attribute, Attribute, CosmosMsg, Empty, Event, SubMsg};
 
 /// A response of a contract entry point, such as `instantiate`, `execute` or `migrate`.
 ///
@@ -102,10 +102,11 @@ impl<T> Response<T> {
     }
 
     /// Add an attribute included in the main `wasm` event.
+    /// A matching key keeps its position and takes the new value.
     ///
     /// For working with optional values or optional attributes, see [`add_attributes`][Self::add_attributes].
     pub fn add_attribute(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.attributes.push(Attribute::new(key, value));
+        set_attribute(&mut self.attributes, Attribute::new(key, value));
         self
     }
 
@@ -134,6 +135,7 @@ impl<T> Response<T> {
     }
 
     /// Bulk add attributes included in the main `wasm` event.
+    /// Each matching key keeps its position and takes the new value.
     ///
     /// Anything that can be turned into an iterator and yields something
     /// that can be converted into an `Attribute` is accepted.
@@ -178,7 +180,9 @@ impl<T> Response<T> {
         mut self,
         attrs: impl IntoIterator<Item = A>,
     ) -> Self {
-        self.attributes.extend(attrs.into_iter().map(A::into));
+        for attr in attrs {
+            set_attribute(&mut self.attributes, attr.into());
+        }
         self
     }
 
@@ -236,6 +240,15 @@ mod tests {
     use super::*;
     use crate::results::submessages::{ReplyOn, UNUSED_MSG_ID};
     use crate::{coins, from_json, to_json_vec, ContractResult};
+
+    #[test]
+    fn response_builders_replace_matching_keys_in_place() {
+        let res = Response::<Empty>::new()
+            .add_attribute("first", "old")
+            .add_attributes([("second", "old"), ("first", "new")])
+            .add_attribute("second", "new");
+        assert_eq!(res.attributes, vec![("first", "new"), ("second", "new")]);
+    }
 
     #[test]
     fn response_add_attributes_works() {

@@ -36,16 +36,19 @@ impl Event {
         }
     }
 
-    /// Add an attribute to the event.
+    /// Add an attribute to the event, replacing the value of a matching key in place.
     pub fn add_attribute(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.attributes.push(Attribute {
-            key: key.into(),
-            value: value.into(),
-        });
+        set_attribute(
+            &mut self.attributes,
+            Attribute {
+                key: key.into(),
+                value: value.into(),
+            },
+        );
         self
     }
 
-    /// Bulk add attributes to the event.
+    /// Bulk add attributes to the event, replacing the value of each matching key in place.
     ///
     /// Anything that can be turned into an iterator and yields something
     /// that can be converted into an `Attribute` is accepted.
@@ -53,7 +56,9 @@ impl Event {
         mut self,
         attrs: impl IntoIterator<Item = A>,
     ) -> Self {
-        self.attributes.extend(attrs.into_iter().map(A::into));
+        for attr in attrs {
+            set_attribute(&mut self.attributes, attr.into());
+        }
         self
     }
 }
@@ -66,6 +71,17 @@ pub struct Attribute {
 }
 
 forward_ref_partial_eq!(Attribute, Attribute);
+
+pub(crate) fn set_attribute(attributes: &mut Vec<Attribute>, attr: Attribute) {
+    if let Some(existing) = attributes
+        .iter_mut()
+        .find(|existing| existing.key == attr.key)
+    {
+        existing.value = attr.value;
+    } else {
+        attributes.push(attr);
+    }
+}
 
 impl Attribute {
     /// Creates a new Attribute. `attr` is just an alias for this.
@@ -136,6 +152,31 @@ mod tests {
         let event_builder = Event::new("test").add_attributes(vec![("foo", "bar"), ("bar", "baz")]);
 
         assert_eq!(event_direct, event_builder);
+    }
+
+    #[test]
+    fn event_builders_replace_exact_keys_in_place() {
+        let event = Event::new("test")
+            .add_attribute("_reserved", "first")
+            .add_attributes([("key", "first"), (" key ", "spaced"), ("key", "second")]);
+        assert_eq!(
+            event.attributes,
+            vec![
+                ("_reserved", "first"),
+                ("key", "second"),
+                (" key ", "spaced")
+            ]
+        );
+
+        let event = event.add_attribute("_reserved", "last");
+        assert_eq!(
+            event.attributes,
+            vec![
+                ("_reserved", "last"),
+                ("key", "second"),
+                (" key ", "spaced")
+            ]
+        );
     }
 
     #[test]
