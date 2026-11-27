@@ -2,8 +2,8 @@ use crate::contract::{execute, instantiate, query};
 use crate::errors::{ContractError, VestingError};
 use crate::msg::{
     DeregisterUserResponse, ExecuteMsg, InstantiateMsg, QueryMsg,
-    RewardUserRequest, VestingAccountResponse, VestingData, VestingSchedule,
-    VestingScheduleQueryOutput,
+    RewardUserRequest, RewardUserResponse, VestingAccountResponse, VestingData,
+    VestingSchedule, VestingScheduleQueryOutput,
 };
 
 use cosmwasm_std::testing::{MockApi, MockQuerier, MockStorage};
