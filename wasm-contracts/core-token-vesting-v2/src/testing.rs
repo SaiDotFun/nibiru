@@ -2,8 +2,8 @@ use crate::contract::{execute, instantiate, query};
 use crate::errors::{ContractError, VestingError};
 use crate::msg::{
     DeregisterUserResponse, ExecuteMsg, InstantiateMsg, QueryMsg,
-    RewardUserRequest, VestingAccountResponse, VestingData, VestingSchedule,
-    VestingScheduleQueryOutput,
+    RewardUserRequest, RewardUserResponse, VestingAccountResponse, VestingData,
+    VestingSchedule, VestingScheduleQueryOutput,
 };
 
 use cosmwasm_std::testing::{MockApi, MockQuerier, MockStorage};
@@ -11,7 +11,7 @@ use cosmwasm_std::{coin, testing, Empty, MessageInfo};
 use cosmwasm_std::{
     from_json,
     testing::{mock_dependencies, mock_env, mock_info},
-    Attribute, BankMsg, Coin, Env, OwnedDeps, Response, StdError, SubMsg,
+    Attribute, BankMsg, Coin, Env, Event, OwnedDeps, Response, StdError, SubMsg,
     Timestamp, Uint128, Uint64,
 };
 
@@ -376,77 +376,67 @@ fn register_cliff_vesting_account_with_native_token() -> TestResult {
     let res =
         execute(deps.as_mut(), env.clone(), mock_info("addr0000", &[]), msg)?;
 
+    assert_eq!(res.attributes, [Attribute::new("method", "reward_users")]);
     assert_eq!(
-        res.attributes,
-        vec![
-            Attribute {
-                key: "action".to_string(),
-                value: "register_vesting_account".to_string()
-            },
-            Attribute {
-                key: "address".to_string(),
-                value: "addr0001".to_string()
-            },
-            Attribute {
-                key: "vesting_amount".to_string(),
-                value: "1000".to_string()
-            },
-            Attribute {
-                key: "method".to_string(),
-                value: "reward_users".to_string()
-            }
-        ]
+        res.events,
+        [Event::new("register_vesting_account").add_attributes([
+            ("action", "register_vesting_account"),
+            ("address", "addr0001"),
+            ("vesting_amount", "1000"),
+        ])]
     );
 
-    // valid amount - one failed because duplicate
-    let vesting_amount = 500u128;
-    let cliff_amount = 250u128;
-    let cliff_time = 105u64;
+    Ok(())
+}
+
+#[test]
+fn reward_batch_emits_one_event_per_successful_recipient() -> TestResult {
+    let (mut deps, env) = setup_with_block_time(100)?;
+    let rewards = [("addr0002", 500), ("addr0002", 550), ("addr0001", 600)]
+        .into_iter()
+        .map(|(address, amount)| RewardUserRequest {
+            user_address: address.to_string(),
+            vesting_amount: Uint128::new(amount),
+            cliff_amount: Uint128::new(250),
+        })
+        .collect();
 
     let msg = ExecuteMsg::RewardUsers {
-        rewards: vec![
-            RewardUserRequest {
-                user_address: "addr0002".to_string(),
-                vesting_amount: Uint128::new(vesting_amount),
-                cliff_amount: Uint128::new(cliff_amount),
-            },
-            RewardUserRequest {
-                user_address: "addr0002".to_string(),
-                vesting_amount: Uint128::new(vesting_amount),
-                cliff_amount: Uint128::new(cliff_amount),
-            },
-        ],
+        rewards,
         vesting_schedule: VestingSchedule::LinearVestingWithCliff {
             start_time: Uint64::new(100),
             end_time: Uint64::new(110),
-            cliff_time: Uint64::new(cliff_time),
+            cliff_time: Uint64::new(105),
         },
     };
 
     let res =
-        execute(deps.as_mut(), env.clone(), mock_info("addr0000", &[]), msg)?;
+        execute(deps.as_mut(), env, mock_info("manager-sender", &[]), msg)?;
 
+    assert_eq!(res.attributes, [Attribute::new("method", "reward_users")]);
     assert_eq!(
-        res.attributes,
-        vec![
-            Attribute {
-                key: "action".to_string(),
-                value: "register_vesting_account".to_string()
-            },
-            Attribute {
-                key: "address".to_string(),
-                value: "addr0002".to_string()
-            },
-            Attribute {
-                key: "vesting_amount".to_string(),
-                value: "500".to_string()
-            },
-            Attribute {
-                key: "method".to_string(),
-                value: "reward_users".to_string()
-            }
+        res.events,
+        [
+            Event::new("register_vesting_account").add_attributes([
+                ("action", "register_vesting_account"),
+                ("address", "addr0002"),
+                ("vesting_amount", "500"),
+            ]),
+            Event::new("register_vesting_account").add_attributes([
+                ("action", "register_vesting_account"),
+                ("address", "addr0001"),
+                ("vesting_amount", "600"),
+            ]),
         ]
     );
+    let data: Vec<RewardUserResponse> = from_json(res.data.unwrap())?;
+    assert_eq!(
+        data.iter()
+            .map(|item| (item.user_address.as_str(), item.success))
+            .collect::<Vec<_>>(),
+        [("addr0002", true), ("addr0002", false), ("addr0001", true)]
+    );
+    assert!(res.messages.is_empty());
 
     Ok(())
 }
@@ -678,26 +668,14 @@ fn register_vesting_account_with_native_token() -> TestResult {
     };
     let info = mock_info("addr0000", &[Coin::new(1000u128, "uusd")]);
     let res: Response = execute(deps.as_mut(), env.clone(), info, msg)?;
+    assert_eq!(res.attributes, [Attribute::new("method", "reward_users")]);
     assert_eq!(
-        res.attributes,
-        vec![
-            Attribute {
-                key: "action".to_string(),
-                value: "register_vesting_account".to_string()
-            },
-            Attribute {
-                key: "address".to_string(),
-                value: "addr0001".to_string()
-            },
-            Attribute {
-                key: "vesting_amount".to_string(),
-                value: "100".to_string()
-            },
-            Attribute {
-                key: "method".to_string(),
-                value: "reward_users".to_string()
-            }
-        ]
+        res.events,
+        [Event::new("register_vesting_account").add_attributes([
+            ("action", "register_vesting_account"),
+            ("address", "addr0001"),
+            ("vesting_amount", "100"),
+        ])]
     );
 
     // query vesting account
@@ -766,26 +744,14 @@ fn claim_native() -> TestResult {
 
     let info = mock_info("addr0000", &[Coin::new(1000000u128, "uusd")]);
     let res = execute(deps.as_mut(), env.clone(), info, msg)?;
+    assert_eq!(res.attributes, [Attribute::new("method", "reward_users")]);
     assert_eq!(
-        res.attributes,
-        vec![
-            Attribute {
-                key: "action".to_string(),
-                value: "register_vesting_account".to_string()
-            },
-            Attribute {
-                key: "address".to_string(),
-                value: "addr0001".to_string()
-            },
-            Attribute {
-                key: "vesting_amount".to_string(),
-                value: "1000000".to_string()
-            },
-            Attribute {
-                key: "method".to_string(),
-                value: "reward_users".to_string()
-            }
-        ]
+        res.events,
+        [Event::new("register_vesting_account").add_attributes([
+            ("action", "register_vesting_account"),
+            ("address", "addr0001"),
+            ("vesting_amount", "1000000"),
+        ])]
     );
 
     // make time to half claimable
@@ -998,6 +964,91 @@ fn deregister_successful() -> TestResult {
                 amount: Uint128::new(3750u128),
             }],
         })
+    );
+    Ok(())
+}
+
+#[test]
+fn deregister_batch_emits_one_event_per_successful_recipient() -> TestResult {
+    let (mut deps, env) = setup_with_block_time(105)?;
+    let rewards = [("addr0001", 500, 100), ("addr0002", 600, 200)]
+        .into_iter()
+        .map(|(address, amount, cliff)| RewardUserRequest {
+            user_address: address.to_string(),
+            vesting_amount: Uint128::new(amount),
+            cliff_amount: Uint128::new(cliff),
+        })
+        .collect();
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin-sender", &[]),
+        ExecuteMsg::RewardUsers {
+            rewards,
+            vesting_schedule: VestingSchedule::LinearVestingWithCliff {
+                start_time: Uint64::new(100),
+                cliff_time: Uint64::new(105),
+                end_time: Uint64::new(110),
+            },
+        },
+    )?;
+
+    let res = execute(
+        deps.as_mut(),
+        env,
+        mock_info("manager-sender", &[]),
+        ExecuteMsg::DeregisterVestingAccounts {
+            addresses: ["addr0002", "nonexistent", "addr0001"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        },
+    )?;
+
+    assert_eq!(
+        res.attributes,
+        [Attribute::new("action", "deregister_vesting_accounts")]
+    );
+    assert_eq!(
+        res.events,
+        [
+            Event::new("deregister_vesting_account").add_attributes([
+                ("action", "deregister_vesting_account"),
+                ("address", "addr0002"),
+                ("vesting_amount", "600"),
+                ("vested_amount", "200"),
+                ("left_vesting_amount", "400"),
+                ("claimed_amount", "0"),
+                ("recoverable_amount", "600"),
+            ]),
+            Event::new("deregister_vesting_account").add_attributes([
+                ("action", "deregister_vesting_account"),
+                ("address", "addr0001"),
+                ("vesting_amount", "500"),
+                ("vested_amount", "100"),
+                ("left_vesting_amount", "400"),
+                ("claimed_amount", "0"),
+                ("recoverable_amount", "500"),
+            ]),
+        ]
+    );
+    let data: Vec<DeregisterUserResponse> = from_json(res.data.unwrap())?;
+    assert_eq!(
+        data.iter()
+            .map(|item| (item.user_address.as_str(), item.success))
+            .collect::<Vec<_>>(),
+        [
+            ("addr0002", true),
+            ("nonexistent", false),
+            ("addr0001", true)
+        ]
+    );
+    assert_eq!(
+        res.messages,
+        [600, 500].map(|amount| SubMsg::new(BankMsg::Send {
+            to_address: "admin-sender".to_string(),
+            amount: vec![coin(amount, "token")],
+        }))
     );
     Ok(())
 }
