@@ -49,6 +49,7 @@ jobs:
               - "just-rs.just"
               - "contrib/scripts/**"
               - "lib/cosmwasm-vm/**"
+              - "lib/cosmwasm-std/**"
               - "lib/cosmwasm-optimizer/**"
               - "lib/cw-address-like/**"
               - "lib/easy-addr/**"
@@ -72,6 +73,7 @@ jobs:
               - "Cargo.toml"
               - "Cargo.lock"
               - "just-rs.just"
+              - "lib/cosmwasm-std/**"
               - "lib/cosmwasm-optimizer/**"
               - ".github/workflows/rust.yml"
 

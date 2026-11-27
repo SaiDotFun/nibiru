@@ -505,8 +505,6 @@ dependencies = [
 [[package]]
 name = "cosmwasm-std"
 version = "1.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "763340055b84e5482ed90fec8194ff7d59112267a09bbf5819c9e3edca8c052e"
 dependencies = [
  "base64",
  "bech32",

@@ -13,24 +13,19 @@ import (
 
 // ContractWasmSHA256 is the hex SHA-256 of ContractWasm, which is also the
 // on-chain Wasm code checksum. It fixes the contract address
-// (keeper.Keeper.PredictContractAddr). The app finds the contract through the Wasm
-// creator index (keeper.Keeper.ContractAddr), not that address, so rebuilding
-// the embedded Wasm is safe; only published addresses go stale.
+// (keeper.Keeper.PredictContractAddr). The v2.23.0 upgrade uses this checksum when
+// it creates the contract. Preserve the bootstrap Wasm for upgrade replay.
 //
-// This constant is the only copy of the hash in Go, and TestEmbeddedWasm
-// checks it against the embedded bytes. To update the build, follow the
-// "Updating the embedded build" steps in wasm-contracts/x-upgrade/README.md
-// and set this constant to the SHA-256 of the uncompressed .wasm.
+// TestEmbeddedWasm checks this constant against the embedded bytes, and
+// just rs wasm-embed-check verifies both against the released checksum.
 const ContractWasmSHA256 = "693dbb25b092ffebe8d7cc65df0ba51b98ba322e31cecac29fbbbe2882537311"
 
-// contractWasmGz is the gzipped x-upgrade release build that ships in
-// nibid. Gzip cuts the embedded size by about two thirds and keeps rebuild
-// diffs small, as for other gzipped Wasm in the repo.
+// contractWasmGz is the gzipped x-upgrade bootstrap build from v2.23.0.
 //
 //   - Source: wasm-contracts/x-upgrade.
 //   - Build: the release optimizer, just rs optimizer build --manifest-path
 //     Cargo.toml -p x-upgrade --output-dir wasm-contracts/artifacts
-//     --mode release, so the embedded code can be rebuilt from source.
+//     --mode release, run against the release source and dependencies.
 //   - Compression: gzip -9 -n, the same convention as the repo's gzipped Wasm
 //     fixtures. -n drops the name and timestamp so recompressing gives the
 //     same file. Only the decompressed bytes are checked; the .gz is
@@ -45,7 +40,7 @@ var contractWasm = sync.OnceValue(func() []byte {
 })
 
 // ContractWasm returns the optimized x-upgrade bytecode, decompressed from
-// the embedded x_upgrade.wasm.gz. Every caller (genesis and the v2.22
+// the embedded x_upgrade.wasm.gz. Every caller (genesis and the v2.23.0
 // upgrade through keeper.Keeper.ActivateContract, and tests) works on the
 // exact code the chain stores, whose SHA-256 is ContractWasmSHA256.
 //

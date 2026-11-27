@@ -439,6 +439,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -690,20 +699,23 @@ dependencies = [
 [[package]]
 name = "cosmwasm-std"
 version = "1.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "763340055b84e5482ed90fec8194ff7d59112267a09bbf5819c9e3edca8c052e"
 dependencies = [
  "base64",
  "bech32 0.9.1",
  "bnum",
+ "chrono",
  "cosmwasm-crypto",
  "cosmwasm-derive",
+ "cosmwasm-schema",
+ "crc32fast",
  "derivative",
  "forward_ref",
  "hex",
+ "hex-literal",
  "schemars",
  "serde",
  "serde-json-wasm 0.5.2",
+ "serde_json",
  "sha2 0.10.9",
  "static_assertions",
  "thiserror 1.0.69",
