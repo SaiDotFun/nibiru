@@ -668,26 +668,14 @@ fn register_vesting_account_with_native_token() -> TestResult {
     };
     let info = mock_info("addr0000", &[Coin::new(1000u128, "uusd")]);
     let res: Response = execute(deps.as_mut(), env.clone(), info, msg)?;
+    assert_eq!(res.attributes, [Attribute::new("method", "reward_users")]);
     assert_eq!(
-        res.attributes,
-        vec![
-            Attribute {
-                key: "action".to_string(),
-                value: "register_vesting_account".to_string()
-            },
-            Attribute {
-                key: "address".to_string(),
-                value: "addr0001".to_string()
-            },
-            Attribute {
-                key: "vesting_amount".to_string(),
-                value: "100".to_string()
-            },
-            Attribute {
-                key: "method".to_string(),
-                value: "reward_users".to_string()
-            }
-        ]
+        res.events,
+        [Event::new("register_vesting_account").add_attributes([
+            ("action", "register_vesting_account"),
+            ("address", "addr0001"),
+            ("vesting_amount", "100"),
+        ])]
     );
 
     // query vesting account
@@ -756,26 +744,14 @@ fn claim_native() -> TestResult {
 
     let info = mock_info("addr0000", &[Coin::new(1000000u128, "uusd")]);
     let res = execute(deps.as_mut(), env.clone(), info, msg)?;
+    assert_eq!(res.attributes, [Attribute::new("method", "reward_users")]);
     assert_eq!(
-        res.attributes,
-        vec![
-            Attribute {
-                key: "action".to_string(),
-                value: "register_vesting_account".to_string()
-            },
-            Attribute {
-                key: "address".to_string(),
-                value: "addr0001".to_string()
-            },
-            Attribute {
-                key: "vesting_amount".to_string(),
-                value: "1000000".to_string()
-            },
-            Attribute {
-                key: "method".to_string(),
-                value: "reward_users".to_string()
-            }
-        ]
+        res.events,
+        [Event::new("register_vesting_account").add_attributes([
+            ("action", "register_vesting_account"),
+            ("address", "addr0001"),
+            ("vesting_amount", "1000000"),
+        ])]
     );
 
     // make time to half claimable
